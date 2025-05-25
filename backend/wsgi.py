@@ -1,11 +1,37 @@
 import os
 import sys
+import asyncio
+import logging
+import tornado.ioloop
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Add the current directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+logger.info("Added current directory to Python path")
 
-# Import the Tornado application
-from app.tornado_main import app
+try:
+    # Import the Tornado application and background task function
+    logger.info("Importing Tornado application and background task function")
+    from app.tornado_main import app, start_background_tasks
 
-# This is the WSGI application callable that Gunicorn expects
-application = app
+    # Initialize the IOLoop for Gunicorn workers
+    logger.info("Initializing IOLoop for Gunicorn workers")
+    io_loop = tornado.ioloop.IOLoop.current()
+
+    # Add a callback to start background tasks after the server starts
+    logger.info("Adding callback to start background tasks")
+    io_loop.add_callback(start_background_tasks)
+
+    # This is the WSGI application callable that Gunicorn expects
+    application = app
+    logger.info("WSGI application initialized successfully")
+except Exception as e:
+    logger.error(f"Error initializing WSGI application: {e}")
+    logger.exception("Exception details:")
+    raise

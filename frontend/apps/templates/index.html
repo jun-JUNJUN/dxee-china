@@ -3,65 +3,555 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DXEE China</title>
+    <title>DeepSeek Chat</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f5f5f5;
+            background-color: #222222;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
+        
+        header {
+            padding: 15px 0;
+            text-align: center;
+        }
+        
         .container {
-            max-width: 1200px;
+            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
-        header {
-            background-color: #333;
-            color: white;
-            padding: 20px 0;
+        
+        .welcome-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
             text-align: center;
+            margin: 100px 0 20px 0;
         }
-        .search-container {
-            margin: 40px 0;
-            text-align: center;
+        
+        .welcome-message {
+            font-size: 32px;
+            color: #e0e0e0;
+            margin-bottom: 30px;
         }
-        .search-input {
-            width: 70%;
-            padding: 12px;
+        
+        .welcome-icon {
+            color: #ff9776;
+            margin-right: 10px;
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 300px;
+        }
+        
+        .message {
+            margin-bottom: 25px;
+            padding: 0;
+            max-width: 90%;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+        
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .message-icon {
+            margin-right: 8px;
+            color: #888;
+        }
+        
+        .ai-icon {
+            color: #ff9776;
+        }
+        
+        .message-content {
+            margin-left: 25px;
+        }
+        
+        .user-message {
+            align-self: flex-start;
+            color: #e0e0e0;
+        }
+        
+        .ai-message {
+            align-self: flex-start;
+            color: #e0e0e0;
+        }
+        
+        .search-results {
+            margin-top: 15px;
+            margin-left: 25px;
+            border-left: 2px solid #444;
+            padding-left: 15px;
+        }
+        
+        .message-form {
+            position: relative;
+            margin: 0 auto;
+            width: 90%;
+            max-width: 1000px;
+            justify-content: center;
+        }
+        
+        .message-input {
+            width: 100%;
+            padding: 18px 50px 18px 20px;
             font-size: 16px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid #444;
+            border-radius: 8px;
+            outline: none;
+            min-height: 24px; /* Single line initially but expands */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            resize: none; /* Prevent textarea resizing */
+            background-color: #333;
+            color: #e0e0e0;
+            line-height: 1.5;
         }
-        .search-button {
-            padding: 12px 24px;
-            background-color: #4CAF50;
-            color: white;
+        
+        .send-button {
+            position: absolute;
+            bottom: 12px;
+            right: 15px;
+            padding: 8px;
+            background-color: transparent;
+            color: #999;
             border: none;
-            border-radius: 4px;
+            border-radius: 50%;
             cursor: pointer;
             font-size: 16px;
+            transition: color 0.3s, background-color 0.3s;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .search-button:hover {
-            background-color: #45a049;
+        
+        .send-button:hover {
+            color: #fff;
+            background-color: #444;
+        }
+        
+        .result-item {
+            background-color: #333;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+        }
+        
+        .result-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #e0e0e0;
+        }
+        
+        .result-content {
+            color: #bbb;
+            font-size: 14px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .loading {
+            opacity: 0.7;
+        }
+        
+        .error-message {
+            color: #ff6b6b;
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 3px solid #ff6b6b;
+            background-color: rgba(255, 107, 107, 0.1);
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>DXEE China</h1>
-            <p>Search China, Discover World</p>
-        </div>
-    </header>
-    
     <div class="container">
-        <div class="search-container">
-            <form action="/search" method="GET">
-                <input type="text" name="q" class="search-input" placeholder="Enter your search query...">
-                <button type="submit" class="search-button">Search</button>
+        <div id="welcome-screen" class="welcome-container">
+            <h2 class="welcome-message"><span class="welcome-icon">✺</span>How can (AI) help you?</h2>
+            
+            <form id="message-form" class="message-form">
+                <textarea id="message-input" class="message-input" placeholder="Type your question here..." required rows="1"></textarea>
+                <button type="submit" class="send-button">↑</button>
+            </form>
+        </div>
+        
+        <div id="chat-screen" class="chat-container hidden">
+            <div id="chat-messages" class="chat-messages">
+                <!-- Example of how messages will appear -->
+                <div class="message user-message">
+                    <div class="message-header">
+                        <span class="message-icon">You</span>
+                    </div>
+                    <div class="message-content">
+                        What are the top tourist attractions in Beijing?
+                    </div>
+                </div>
+                
+                <div class="message ai-message">
+                    <div class="message-header">
+                        <span class="message-icon ai-icon">✺</span>
+                        <span>AI</span>
+                    </div>
+                    <div class="message-content">
+                        Here are some of the top tourist attractions in Beijing:
+                    </div>
+                    <div class="search-results">
+                        <div class="result-item">
+                            <div class="result-title">The Great Wall of China</div>
+                            <div class="result-content">One of the most iconic symbols of China, the Great Wall stretches across the northern part of the country. The Badaling and Mutianyu sections near Beijing are the most visited portions.</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="result-title">The Forbidden City</div>
+                            <div class="result-content">Located in the center of Beijing, this imperial palace was the home of Chinese emperors for almost 500 years during the Ming and Qing dynasties.</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="result-title">Temple of Heaven</div>
+                            <div class="result-content">A complex of religious buildings where emperors of the Ming and Qing dynasties visited for annual ceremonies of prayer for good harvest.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <form id="chat-form" class="message-form">
+                <textarea id="chat-input" class="message-input" placeholder="Type your question here..." required rows="1"></textarea>
+                <button type="submit" class="send-button">↑</button>
             </form>
         </div>
     </div>
+
+    <script>
+        // JavaScript will be added later for handling the chat functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const welcomeScreen = document.getElementById('welcome-screen');
+            const chatScreen = document.getElementById('chat-screen');
+            const messageForm = document.getElementById('message-form');
+            const messageInput = document.getElementById('message-input');
+            const chatMessages = document.getElementById('chat-messages');
+            
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            
+            // Auto-resize textarea as user types
+            function setupTextareaResize(textarea) {
+                textarea.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = (this.scrollHeight) + 'px';
+                });
+            }
+            
+            setupTextareaResize(messageInput);
+            setupTextareaResize(chatInput);
+            
+            // Track current chat session
+            let currentChatId = null;
+            
+            // Function to send message to the backend API
+            async function sendMessage(message, chatId = null) {
+                try {
+                    console.log(`Sending message to backend: ${message.substring(0, 30)}... with chatId: ${chatId}`);
+                    const response = await fetch('/chat/message', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: message,
+                            chat_id: chatId
+                        }),
+                    });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`Server error (${response.status}): ${errorText}`);
+                        throw new Error(`Server responded with ${response.status}: ${errorText}`);
+                    }
+                    
+                    const result = await response.json();
+                    console.log('Response received:', result);
+                    return result;
+                } catch (error) {
+                    console.error('Error sending message:', error);
+                    return null;
+                }
+            }
+            
+            // Function to get chat history
+            async function getChatHistory(chatId) {
+                try {
+                    const response = await fetch(`/chat/history/${chatId}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('Error getting chat history:', error);
+                    return null;
+                }
+            }
+            
+            // Hide welcome screen and show chat screen when form is submitted
+            messageForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const message = messageInput.value.trim();
+                if (message) {
+                    welcomeScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
+                    
+                    // Clear the example messages
+                    chatMessages.innerHTML = '';
+                    
+                    // Add user message to chat
+                    addMessage(message, 'user');
+                    
+                    // Clear input
+                    messageInput.value = '';
+                    
+                    // Show loading indicator
+                    const loadingElement = document.createElement('div');
+                    loadingElement.classList.add('message', 'ai-message', 'loading');
+                    
+                    const headerElement = document.createElement('div');
+                    headerElement.classList.add('message-header');
+                    
+                    const iconElement = document.createElement('span');
+                    iconElement.classList.add('message-icon', 'ai-icon');
+                    iconElement.textContent = '✺';
+                    
+                    const nameElement = document.createElement('span');
+                    nameElement.textContent = 'AI';
+                    
+                    headerElement.appendChild(iconElement);
+                    headerElement.appendChild(nameElement);
+                    
+                    const contentElement = document.createElement('div');
+                    contentElement.classList.add('message-content');
+                    contentElement.textContent = 'Searching...';
+                    
+                    loadingElement.appendChild(headerElement);
+                    loadingElement.appendChild(contentElement);
+                    
+                    chatMessages.appendChild(loadingElement);
+                    
+                    try {
+                        console.log("Sending initial message to backend:", message);
+                        // Send message to backend
+                        const result = await sendMessage(message, currentChatId);
+                        
+                        // Remove loading indicator
+                        chatMessages.removeChild(loadingElement);
+                        
+                        if (result) {
+                            console.log("Received response:", result);
+                            currentChatId = result.chat_id;
+                            
+                            // Display AI response
+                            const response = result.response;
+                            addAIMessageWithResults(
+                                response.message,
+                                response.search_results
+                            );
+                        } else {
+                            console.error("No result returned from backend");
+                            // Show error message
+                            addErrorMessage("No response received from the server. Please check the backend logs.");
+                        }
+                    } catch (error) {
+                        console.error("Error during message processing:", error);
+                        // Remove loading indicator
+                        if (loadingElement.parentNode === chatMessages) {
+                            chatMessages.removeChild(loadingElement);
+                        }
+                        
+                        // Show detailed error message
+                        addErrorMessage(`Error: ${error.message || "Unknown error"}. Please check the console and backend logs for details.`);
+                    }
+                }
+                
+            });
+            
+            // Handle continued conversation
+            chatForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const message = chatInput.value.trim();
+                if (message) {
+                    // Add user message to chat
+                    addMessage(message, 'user');
+                    
+                    // Clear input
+                    chatInput.value = '';
+                    chatInput.style.height = 'auto';
+                    
+                    // Show loading indicator
+                    const loadingElement = document.createElement('div');
+                    loadingElement.classList.add('message', 'ai-message', 'loading');
+                    
+                    const headerElement = document.createElement('div');
+                    headerElement.classList.add('message-header');
+                    
+                    const iconElement = document.createElement('span');
+                    iconElement.classList.add('message-icon', 'ai-icon');
+                    iconElement.textContent = '✺';
+                    
+                    const nameElement = document.createElement('span');
+                    nameElement.textContent = 'AI';
+                    
+                    headerElement.appendChild(iconElement);
+                    headerElement.appendChild(nameElement);
+                    
+                    const contentElement = document.createElement('div');
+                    contentElement.classList.add('message-content');
+                    contentElement.textContent = 'Searching...';
+                    
+                    loadingElement.appendChild(headerElement);
+                    loadingElement.appendChild(contentElement);
+                    
+                    chatMessages.appendChild(loadingElement);
+                    
+                    try {
+                        console.log("Sending follow-up message to backend:", message);
+                        // Send message to backend
+                        const result = await sendMessage(message, currentChatId);
+                        
+                        // Remove loading indicator
+                        chatMessages.removeChild(loadingElement);
+                        
+                        if (result) {
+                            console.log("Received follow-up response:", result);
+                            // Display AI response
+                            const response = result.response;
+                            addAIMessageWithResults(
+                                response.message,
+                                response.search_results
+                            );
+                        } else {
+                            console.error("No result returned from backend for follow-up");
+                            // Show error message
+                            addErrorMessage("No response received from the server. Please check the backend logs.");
+                        }
+                    } catch (error) {
+                        console.error("Error during follow-up message processing:", error);
+                        // Remove loading indicator
+                        if (loadingElement.parentNode === chatMessages) {
+                            chatMessages.removeChild(loadingElement);
+                        }
+                        
+                        // Show detailed error message
+                        addErrorMessage(`Error: ${error.message || "Unknown error"}. Please check the console and backend logs for details.`);
+                    }
+                }
+            });
+            
+            function addMessage(text, sender) {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message');
+                messageElement.classList.add(sender === 'user' ? 'user-message' : 'ai-message');
+                
+                const headerElement = document.createElement('div');
+                headerElement.classList.add('message-header');
+                
+                const iconElement = document.createElement('span');
+                iconElement.classList.add('message-icon');
+                if (sender === 'ai') iconElement.classList.add('ai-icon');
+                iconElement.textContent = sender === 'user' ? 'You' : '✺';
+                
+                headerElement.appendChild(iconElement);
+                
+                if (sender === 'ai') {
+                    const nameElement = document.createElement('span');
+                    nameElement.textContent = 'AI';
+                    headerElement.appendChild(nameElement);
+                }
+                
+                const contentElement = document.createElement('div');
+                contentElement.classList.add('message-content');
+                contentElement.textContent = text;
+                
+                messageElement.appendChild(headerElement);
+                messageElement.appendChild(contentElement);
+                
+                chatMessages.appendChild(messageElement);
+                
+                // Scroll to bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                return messageElement;
+            }
+            
+            function addErrorMessage(text) {
+                const errorContainer = document.createElement('div');
+                errorContainer.classList.add('error-message');
+                errorContainer.textContent = text;
+                chatMessages.appendChild(errorContainer);
+                
+                // Scroll to bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            function addAIMessageWithResults(text, results) {
+                const messageElement = addMessage(text, 'ai');
+                
+                if (results && results.length > 0) {
+                    const resultsContainer = document.createElement('div');
+                    resultsContainer.classList.add('search-results');
+                    
+                    results.forEach(result => {
+                        const resultItem = document.createElement('div');
+                        resultItem.classList.add('result-item');
+                        
+                        const titleElement = document.createElement('div');
+                        titleElement.classList.add('result-title');
+                        titleElement.textContent = result.title;
+                        
+                        const contentElement = document.createElement('div');
+                        contentElement.classList.add('result-content');
+                        contentElement.textContent = result.content;
+                        
+                        resultItem.appendChild(titleElement);
+                        resultItem.appendChild(contentElement);
+                        resultsContainer.appendChild(resultItem);
+                    });
+                    
+                    messageElement.appendChild(resultsContainer);
+                }
+                
+                // Scroll to bottom again after adding results
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        });
+    </script>
 </body>
 </html>
