@@ -7,9 +7,18 @@ import tornado.ioloop
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='backend.log',
+    filemode='a'  # Append mode
 )
+# Add console handler to see logs in the console as well
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+console.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logging.getLogger('').addHandler(console)
+
 logger = logging.getLogger(__name__)
+logger.info("Logging configured to write to backend.log")
 
 # Add the current directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

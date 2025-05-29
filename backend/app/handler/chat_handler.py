@@ -5,8 +5,7 @@ import logging
 import traceback
 from datetime import datetime
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Get logger
 logger = logging.getLogger(__name__)
 
 class ChatMessageHandler(tornado.web.RequestHandler):
@@ -49,26 +48,10 @@ class ChatMessageHandler(tornado.web.RequestHandler):
                 'type': 'user'
             }
             
-            # Store the message in chat history
-            await self.application.meilisearch.index('chat_history').add_documents([message_doc])
-            
-            # Add the message to the input queue for processing by DeepSeek
-            self.application.input_queue.append({
-                'message': message,
-                'chat_id': chat_id,
-                'message_id': message_doc['id']
-            })
+            message_id = message_doc['id']
             
             # Store the message in chat history
             try:
-                message_doc = {
-                    'id': str(uuid.uuid4()),
-                    'chat_id': chat_id,
-                    'message': message,
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'type': 'user'
-                }
-                
                 logger.info(f"Storing message in chat history for chat_id: {chat_id}")
                 await self.application.meilisearch.index('chat_history').add_documents([message_doc])
                 logger.info("Message stored successfully")
@@ -79,11 +62,11 @@ class ChatMessageHandler(tornado.web.RequestHandler):
             
             # Add the message to the input queue for processing by DeepSeek
             try:
-                logger.info(f"Adding message to input queue for chat_id: {chat_id}")
+                logger.info(f"Adding message to input queue for chat_id: {chat_id}, message_id: {message_id}")
                 self.application.input_queue.append({
                     'message': message,
                     'chat_id': chat_id,
-                    'message_id': message_doc['id']
+                    'message_id': message_id
                 })
                 logger.info(f"Queue size after adding: {len(self.application.input_queue)}")
             except Exception as e:
@@ -95,16 +78,16 @@ class ChatMessageHandler(tornado.web.RequestHandler):
             
             # Wait for the response from the output queue
             response = None
-            max_attempts = 100  # Maximum number of attempts (10 seconds)
+            max_attempts = 300  # Maximum number of attempts (30 seconds)
             attempts = 0
             
             logger.info(f"Waiting for response from DeepSeek for chat_id: {chat_id}")
             while response is None and attempts < max_attempts:
-                # Check if there's a response in the output queue for this chat
+                # Check if there's a response in the output queue for this specific message
                 for i, item in enumerate(self.application.output_queue):
-                    if item.get('chat_id') == chat_id:
+                    if item.get('chat_id') == chat_id and item.get('message_id') == message_id:
                         response = self.application.output_queue.pop(i)
-                        logger.info(f"Found response in output queue for chat_id: {chat_id}")
+                        logger.info(f"Found response in output queue for chat_id: {chat_id}, message_id: {message_id}")
                         break
                 
                 if response is None:
@@ -117,10 +100,26 @@ class ChatMessageHandler(tornado.web.RequestHandler):
                         logger.info(f"Waiting for response... Attempt {attempts}/{max_attempts}")
             
             if response is None:
-                # If no response after timeout, return an error
-                logger.error(f"Request timeout for chat_id: {chat_id}")
-                self.set_status(408)
-                self.write({'error': 'Request timeout. The DeepSeek API may be unavailable.'})
+                # If no response after timeout, create a fallback response instead of returning an error
+                logger.error(f"Request timeout for chat_id: {chat_id}, message_id: {message_id}")
+                
+                # Create a fallback response document
+                response_doc = {
+                    'id': str(uuid.uuid4()),
+                    'chat_id': chat_id,
+                    'message': "No response received from the AI service. It may be temporarily unavailable.",
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'type': 'assistant',
+                    'search_results': []
+                }
+                
+                # Return the fallback response
+                result = {
+                    'chat_id': chat_id,
+                    'response': response_doc
+                }
+                logger.info(f"Returning fallback response to client for chat_id: {chat_id}")
+                self.write(result)
                 return
                 
             logger.info(f"Response received for chat_id: {chat_id}")

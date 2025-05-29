@@ -3,27 +3,26 @@ Bidirectional information bridge providing official China data to Asia-Europe us
 
 # dxee-china Application
 
-This application consists of three main components:
-- Frontend (Flask)
+This application consists of two main components:
 - Backend (Tornado)
 - Meilisearch (Search Engine)
 
-## New Architecture
+## Architecture
 
-The application now uses local virtual environments for the frontend and backend, while Meilisearch runs in a Docker container.
+The application uses a local virtual environment for the backend, while Meilisearch runs in a Docker container. The backend provides API endpoints for search and chat functionality, with AI-powered responses using the DeepSeek API.
 
 ## Setup Instructions
 
-### 1. Set up Virtual Environments
+### 1. Set up Virtual Environment
 
-Run the setup script to create virtual environments for both frontend and backend:
+Run the setup script to create a virtual environment for the backend:
 
 ```bash
 ./setup_venvs.sh
 ```
 
 This script will:
-- Create virtual environments for both frontend and backend
+- Create a virtual environment for the backend
 - Install all required dependencies
 - Make the run scripts executable
 
@@ -42,37 +41,56 @@ cd backend
 ./run.sh
 ```
 
-The backend will be available at http://localhost:8100
+The backend will be available at http://localhost:8888 (or the port specified in your .env file)
 
-### 4. Start the Frontend
+## API Endpoints
 
-```bash
-cd frontend
-./run.sh
-```
+The backend provides the following API endpoints:
 
-The frontend will be available at http://localhost:5101
+- `/search` - Search for documents
+- `/chat/message` - Send a message to the AI chat service
+- `/chat/history/{chat_id}` - Get chat history for a specific chat
+- `/health` - Health check endpoint
 
 ## Ports
 
-- Frontend: 5101
-- Backend: 8100
+- Backend: 8888 (default, configurable in .env)
 - Meilisearch: 7701
 
 ## Environment Variables
 
-The following environment variables are set in the run scripts:
+The following environment variables can be configured in the backend/.env file:
 
 ### Backend
-- PYTHONUNBUFFERED=1
-- MEILISEARCH_URL=http://localhost:7701
+- PORT=8888
+- DEBUG=True
+- MEILISEARCH_HOST=http://localhost:7701
+- MEILISEARCH_API_KEY=masterKey
+- DEEPSEEK_API_KEY=your_deepseek_api_key_here
+- DEEPSEEK_API_URL=https://api.deepseek.com
+- LOG_LEVEL=INFO
 
-### Frontend
-- FLASK_APP=apps
-- FLASK_ENV=development
-- MEILISEARCH_URL=http://localhost:7701
+## Features
+
+### Search
+The application uses Meilisearch to provide fast and relevant search results. The search functionality is implemented in the `SearchService` class and exposed through the `/search` endpoint.
+
+### Chat
+The application provides an AI-powered chat functionality using the DeepSeek API. The chat functionality is implemented in the `DeepSeekService` class and exposed through the `/chat/message` and `/chat/history/{chat_id}` endpoints.
+
+## Project Structure
+
+- `backend/` - Backend code (Tornado)
+  - `app/` - Application code
+    - `handler/` - Request handlers
+    - `service/` - Service classes
+  - `templates/` - HTML templates
+- `example/` - Example code
+- `web/` - Nginx configuration
+- `scripts/` - Utility scripts
 
 ## Notes
 
-- The nginx container has been removed as it's no longer needed. The Flask frontend can handle static file serving directly.
-- Both frontend and backend now connect directly to Meilisearch at http://localhost:7701.
+- The application uses Tornado as the web framework for the backend.
+- Chat messages and responses are stored in Meilisearch for persistence.
+- The DeepSeek API is used for generating AI responses to chat messages.

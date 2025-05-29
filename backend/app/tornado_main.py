@@ -9,14 +9,24 @@ from meilisearch_python_sdk import AsyncClient
 from app.handler.search_handler import SearchHandler
 from app.handler.health_handler import HealthHandler
 from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler
+from app.handler.main_handler import MainHandler, NotFoundHandler
 from app.service.deepseek_service import DeepSeekService
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='backend.log',
+    filemode='a'  # Append mode
 )
+# Add console handler to see logs in the console as well
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+console.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logging.getLogger('').addHandler(console)
+
 logger = logging.getLogger(__name__)
+logger.info("Logging configured to write to backend.log")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -34,11 +44,14 @@ class Application(tornado.web.Application):
             (r"/health", HealthHandler),
             (r"/chat/message", ChatMessageHandler),
             (r"/chat/history/([^/]+)", ChatHistoryHandler),
+            (r"/", MainHandler),  # Main page handler
         ]
         
         settings = {
             'debug': True,
-            'autoreload': True
+            'autoreload': True,
+            'template_path': 'templates',  # Path to templates directory
+            'default_handler_class': NotFoundHandler  # 404 handler
         }
         
         super().__init__(handlers, **settings)
