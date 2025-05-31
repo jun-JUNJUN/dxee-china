@@ -36,7 +36,7 @@
             align-items: center;
             flex-direction: column;
             text-align: center;
-            margin: 100px 0 20px 0;
+            margin: 100px 0 300px 0; /* Increased bottom margin to make room for fixed search form */
         }
         
         .welcome-message {
@@ -63,13 +63,14 @@
             flex: 1;
             overflow-y: auto;
             padding: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 300px; /* Increased to make room for fixed search form */
             min-height: 300px;
         }
         
         .message {
             margin-bottom: 25px;
             padding: 0;
+            width: 845px;
             max-width: 90%;
             word-wrap: break-word;
             line-height: 1.5;
@@ -199,13 +200,19 @@
             border-radius: 16px;
             background: #181a1b;
             width: 864px;
+            max-width: 90%;
             margin: 0 auto;
             padding: 32px 24px 24px 24px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            min-height: 468px;
+            min-height: 200px;
             box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
         }
         .search-buttons {
             display: flex;
@@ -560,6 +567,8 @@
             function displaySearchResult(response) {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message ai-message';
+                messageDiv.style.width = '845px'; // Fixed width to match loading indicator
+                messageDiv.style.maxWidth = '90%'; // Responsive for smaller screens
                 
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'message-header';
@@ -629,6 +638,8 @@
                 const loadingDiv = document.createElement('div');
                 loadingDiv.className = 'message ai-message';
                 loadingDiv.id = 'loading-message';
+                loadingDiv.style.width = '845px'; // Fixed width to match results
+                loadingDiv.style.maxWidth = '90%'; // Responsive for smaller screens
                 
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'message-header';
@@ -716,6 +727,8 @@
                 const loadingDiv = document.createElement('div');
                 loadingDiv.className = 'message ai-message';
                 loadingDiv.id = 'loading-message';
+                loadingDiv.style.width = '845px'; // Fixed width to match results
+                loadingDiv.style.maxWidth = '90%'; // Responsive for smaller screens
                 
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'message-header';
