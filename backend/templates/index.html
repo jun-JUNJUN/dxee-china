@@ -118,6 +118,7 @@
             width: 90%;
             max-width: 1000px;
             justify-content: center;
+            margin-bottom: 20px; /* Add margin to prevent cut-off */
         }
         
         .message-input {
@@ -286,10 +287,21 @@
                 <!-- Messages will be dynamically added here -->
             </div>
             
-            <form id="chat-form" class="message-form">
-                <textarea id="chat-input" class="message-input" placeholder="Type your question here..." required rows="1"></textarea>
-                <button type="submit" class="send-button">↑</button>
-            </form>
+            <div class="search-frame">
+                <form id="chat-form" class="message-form">
+                    <textarea id="chat-input" class="message-input" placeholder="Type your question here..." required rows="1"></textarea>
+                    <div class="search-buttons">
+                        <div class="left-buttons">
+                            <button type="button" class="search-btn selectable-btn selected" data-mode="search">Search</button>
+                            <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
+                            <button type="button" class="doubao-btn selectable-btn" data-mode="doubao">Doubao Search</button>
+                        </div>
+                        <div class="right-button">
+                            <button type="button" class="execute-btn" id="chat-execute-btn">Execute</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -441,22 +453,81 @@
                     const searchText = textarea.value.trim();
                     if (!searchText) return;
                     
+                    // Make sure we're in the chat screen
+                    welcomeScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
+                    
                     // Display the search query
                     displaySearchQuery(searchText);
                     
-                    // Process the search
-                    const result = await sendMessage(searchText, currentChatId);
-                    if (result) {
-                        currentChatId = result.chat_id;
-                        displaySearchResult(result.response);
+                    // Create a loading indicator in the AI answer area
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.className = 'message ai-message';
+                    loadingDiv.id = 'loading-message';
+                    
+                    const headerDiv = document.createElement('div');
+                    headerDiv.className = 'message-header';
+                    
+                    const iconSpan = document.createElement('span');
+                    iconSpan.className = 'message-icon ai-icon';
+                    iconSpan.textContent = '✺';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = 'AI';
+                    
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'message-content';
+                    contentDiv.textContent = 'Searching...';
+                    
+                    headerDiv.appendChild(iconSpan);
+                    headerDiv.appendChild(nameSpan);
+                    loadingDiv.appendChild(headerDiv);
+                    loadingDiv.appendChild(contentDiv);
+                    
+                    chatMessages.appendChild(loadingDiv);
+                    
+                    // Scroll to the bottom
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    
+                    // Clear the current form
+                    textarea.value = '';
+                    textarea.style.height = 'auto';
+                    
+                    // Process the search asynchronously
+                    sendMessage(searchText, currentChatId).then(result => {
+                        if (result) {
+                            currentChatId = result.chat_id;
+                            
+                            // Remove loading indicator
+                            const loadingMessage = document.getElementById('loading-message');
+                            if (loadingMessage) {
+                                loadingMessage.remove();
+                            }
+                            
+                            // Display the search result
+                            displaySearchResult(result.response);
+                            
+                            // Scroll to the bottom
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }
+                    }).catch(error => {
+                        console.error('Error processing search:', error);
                         
-                        // Create a new search form after displaying results
-                        chatMessages.appendChild(createSearchForm());
+                        // Remove loading indicator
+                        const loadingMessage = document.getElementById('loading-message');
+                        if (loadingMessage) {
+                            loadingMessage.remove();
+                        }
                         
-                        // Clear the current form
-                        textarea.value = '';
-                        textarea.style.height = 'auto';
-                    }
+                        // Display error message
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'message ai-message error-message';
+                        errorDiv.textContent = 'Error processing your search. Please try again.';
+                        chatMessages.appendChild(errorDiv);
+                        
+                        // Scroll to the bottom
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    });
                 });
                 
                 return searchFrame;
@@ -540,42 +611,190 @@
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
             
-            // Initialize the UI
+            // Initialize the UI for the welcome screen form
             messageForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
                 const message = messageInput.value.trim();
                 if (!message) return;
                 
-                // Switch from welcome screen to chat screen
+                // Switch from welcome screen to chat screen immediately
                 welcomeScreen.classList.add('hidden');
                 chatScreen.classList.remove('hidden');
                 
                 // Display the search query
                 displaySearchQuery(message);
                 
-                // Process the search
-                const result = await sendMessage(message, currentChatId);
-                if (result) {
-                    currentChatId = result.chat_id;
-                    displaySearchResult(result.response);
+                // Create a loading indicator in the AI answer area
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'message ai-message';
+                loadingDiv.id = 'loading-message';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '✺';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'AI';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.textContent = 'Searching...';
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                loadingDiv.appendChild(headerDiv);
+                loadingDiv.appendChild(contentDiv);
+                
+                chatMessages.appendChild(loadingDiv);
+                
+                // Scroll to the bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Clear the input
+                messageInput.value = '';
+                messageInput.style.height = 'auto';
+                
+                // Process the search asynchronously
+                sendMessage(message, currentChatId).then(result => {
+                    if (result) {
+                        currentChatId = result.chat_id;
+                        
+                        // Remove loading indicator
+                        const loadingMessage = document.getElementById('loading-message');
+                        if (loadingMessage) {
+                            loadingMessage.remove();
+                        }
+                        
+                        // Display the search result
+                        displaySearchResult(result.response);
+                        
+                        // Scroll to the bottom
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                }).catch(error => {
+                    console.error('Error processing search:', error);
                     
-                    // Create a new search form after displaying results
-                    chatMessages.appendChild(createSearchForm());
+                    // Remove loading indicator
+                    const loadingMessage = document.getElementById('loading-message');
+                    if (loadingMessage) {
+                        loadingMessage.remove();
+                    }
                     
-                    // Clear the input
-                    messageInput.value = '';
-                    messageInput.style.height = 'auto';
-                }
+                    // Display error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'message ai-message error-message';
+                    errorDiv.textContent = 'Error processing your search. Please try again.';
+                    chatMessages.appendChild(errorDiv);
+                    
+                    // Scroll to the bottom
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                });
             });
             
-            // Execute search (submit form) when Execute button is clicked
+            // Initialize the UI for the chat screen form
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            
+            // Setup textarea resize for chat input
+            setupTextareaResize(chatInput);
+            
+            // Add event listener for chat form submission
+            chatForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const message = chatInput.value.trim();
+                if (!message) return;
+                
+                // Display the search query
+                displaySearchQuery(message);
+                
+                // Create a loading indicator in the AI answer area
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'message ai-message';
+                loadingDiv.id = 'loading-message';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '✺';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'AI';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.textContent = 'Searching...';
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                loadingDiv.appendChild(headerDiv);
+                loadingDiv.appendChild(contentDiv);
+                
+                chatMessages.appendChild(loadingDiv);
+                
+                // Scroll to the bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Clear the input
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                
+                // Process the search asynchronously
+                sendMessage(message, currentChatId).then(result => {
+                    if (result) {
+                        currentChatId = result.chat_id;
+                        
+                        // Remove loading indicator
+                        const loadingMessage = document.getElementById('loading-message');
+                        if (loadingMessage) {
+                            loadingMessage.remove();
+                        }
+                        
+                        // Display the search result
+                        displaySearchResult(result.response);
+                        
+                        // Scroll to the bottom
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                }).catch(error => {
+                    console.error('Error processing search:', error);
+                    
+                    // Remove loading indicator
+                    const loadingMessage = document.getElementById('loading-message');
+                    if (loadingMessage) {
+                        loadingMessage.remove();
+                    }
+                    
+                    // Display error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'message ai-message error-message';
+                    errorDiv.textContent = 'Error processing your search. Please try again.';
+                    chatMessages.appendChild(errorDiv);
+                    
+                    // Scroll to the bottom
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                });
+            });
+            
+            // Execute search (submit form) when Execute button is clicked on welcome screen
             const executeBtn = document.querySelector('.execute-btn');
             executeBtn.addEventListener('click', function() {
                 messageForm.requestSubmit();
             });
             
-            // Execute search when Shift+Enter is pressed in the textarea
+            // Execute search when Execute button is clicked on chat screen
+            const chatExecuteBtn = document.getElementById('chat-execute-btn');
+            chatExecuteBtn.addEventListener('click', function() {
+                chatForm.requestSubmit();
+            });
+            
+            // Execute search when Shift+Enter is pressed in the welcome screen textarea
             messageInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && e.shiftKey) {
                     e.preventDefault();
@@ -583,8 +802,13 @@
                 }
             });
             
-            // Auto-resize textarea as user types
-            setupTextareaResize(messageInput);
+            // Execute search when Shift+Enter is pressed in the chat screen textarea
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && e.shiftKey) {
+                    e.preventDefault();
+                    chatForm.requestSubmit();
+                }
+            });
         });
     </script>
 </body>
