@@ -192,54 +192,98 @@
             border-left: 3px solid #ff6b6b;
             background-color: rgba(255, 107, 107, 0.1);
         }
+        
+        .search-frame {
+            border: 1px solid #fff;
+            border-radius: 16px;
+            background: #181a1b;
+            width: 864px;
+            margin: 0 auto;
+            padding: 32px 24px 24px 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 468px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+        }
+        .search-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 32px;
+        }
+        .left-buttons {
+            display: flex;
+            gap: 16px;
+        }
+        .right-button {
+            display: flex;
+            flex: 1;
+            justify-content: flex-end;
+        }
+        .execute-btn {
+            padding: 6px 14px;
+            border-radius: 16px;
+            border: 1px solid #fff;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: #232526;
+            color: #fff;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .execute-btn:hover {
+            background: #333;
+            border-color: #00bcd4;
+        }
+        .search-btn, .deep-btn, .doubao-btn {
+            padding: 6px 14px;
+            border-radius: 16px;
+            border: 1px solid #fff;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: #232526;
+            color: #fff;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .search-btn {
+            border-color: #00bcd4;
+        }
+        .search-btn:hover, .deep-btn:hover, .doubao-btn:hover {
+            background: #333;
+            border-color: #00bcd4;
+        }
+        .search-btn.selected, .deep-btn.selected, .doubao-btn.selected {
+            background: #00bcd4;
+            color: #fff;
+            border-color: #00bcd4;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div id="welcome-screen" class="welcome-container">
-            <h2 class="welcome-message"><span class="welcome-icon">✺</span>How can (AI) help you?</h2>
-            
-            <form id="message-form" class="message-form">
-                <textarea id="message-input" class="message-input" placeholder="Type your question here..." required rows="1"></textarea>
-                <button type="submit" class="send-button">↑</button>
-            </form>
+            <div class="search-frame">
+                <form id="message-form" class="message-form">
+                    <textarea id="message-input" class="message-input" placeholder="Type your question here..." required rows="1"></textarea>
+                    <div class="search-buttons">
+                        <div class="left-buttons">
+                            <button type="button" class="search-btn selectable-btn" data-mode="search">Search</button>
+                            <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
+                            <button type="button" class="doubao-btn selectable-btn" data-mode="doubao">Doubao Search</button>
+                        </div>
+                        <div class="right-button">
+                            <button type="button" class="execute-btn">Execute</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
         
         <div id="chat-screen" class="chat-container hidden">
             <div id="chat-messages" class="chat-messages">
-                <!-- Example of how messages will appear -->
-                <div class="message user-message">
-                    <div class="message-header">
-                        <span class="message-icon">You</span>
-                    </div>
-                    <div class="message-content">
-                        What are the top tourist attractions in Beijing?
-                    </div>
-                </div>
-                
-                <div class="message ai-message">
-                    <div class="message-header">
-                        <span class="message-icon ai-icon">✺</span>
-                        <span>AI</span>
-                    </div>
-                    <div class="message-content">
-                        Here are some of the top tourist attractions in Beijing:
-                    </div>
-                    <div class="search-results">
-                        <div class="result-item">
-                            <div class="result-title">The Great Wall of China</div>
-                            <div class="result-content">One of the most iconic symbols of China, the Great Wall stretches across the northern part of the country. The Badaling and Mutianyu sections near Beijing are the most visited portions.</div>
-                        </div>
-                        <div class="result-item">
-                            <div class="result-title">The Forbidden City</div>
-                            <div class="result-content">Located in the center of Beijing, this imperial palace was the home of Chinese emperors for almost 500 years during the Ming and Qing dynasties.</div>
-                        </div>
-                        <div class="result-item">
-                            <div class="result-title">Temple of Heaven</div>
-                            <div class="result-content">A complex of religious buildings where emperors of the Ming and Qing dynasties visited for annual ceremonies of prayer for good harvest.</div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Messages will be dynamically added here -->
             </div>
             
             <form id="chat-form" class="message-form">
@@ -250,16 +294,12 @@
     </div>
 
     <script>
-        // JavaScript will be added later for handling the chat functionality
         document.addEventListener('DOMContentLoaded', function() {
             const welcomeScreen = document.getElementById('welcome-screen');
             const chatScreen = document.getElementById('chat-screen');
             const messageForm = document.getElementById('message-form');
             const messageInput = document.getElementById('message-input');
             const chatMessages = document.getElementById('chat-messages');
-            
-            const chatForm = document.getElementById('chat-form');
-            const chatInput = document.getElementById('chat-input');
             
             // Auto-resize textarea as user types
             function setupTextareaResize(textarea) {
@@ -270,7 +310,6 @@
             }
             
             setupTextareaResize(messageInput);
-            setupTextareaResize(chatInput);
             
             // Track current chat session
             let currentChatId = null;
@@ -321,237 +360,233 @@
                 }
             }
             
-            // Hide welcome screen and show chat screen when form is submitted
+            // Function to create a search form
+            function createSearchForm() {
+                const searchFrame = document.createElement('div');
+                searchFrame.className = 'search-frame';
+                
+                const form = document.createElement('form');
+                form.className = 'message-form';
+                
+                const textarea = document.createElement('textarea');
+                textarea.className = 'message-input';
+                textarea.placeholder = 'Type your question here...';
+                textarea.required = true;
+                textarea.rows = 1;
+                
+                const buttonsDiv = document.createElement('div');
+                buttonsDiv.className = 'search-buttons';
+                
+                const leftButtons = document.createElement('div');
+                leftButtons.className = 'left-buttons';
+                
+                const searchBtn = document.createElement('button');
+                searchBtn.type = 'button';
+                searchBtn.className = 'search-btn selectable-btn selected';
+                searchBtn.dataset.mode = 'search';
+                searchBtn.textContent = 'Search';
+                
+                const deepBtn = document.createElement('button');
+                deepBtn.type = 'button';
+                deepBtn.className = 'deep-btn selectable-btn';
+                deepBtn.dataset.mode = 'deep';
+                deepBtn.textContent = 'Deep Search';
+                
+                const doubaoBtn = document.createElement('button');
+                doubaoBtn.type = 'button';
+                doubaoBtn.className = 'doubao-btn selectable-btn';
+                doubaoBtn.dataset.mode = 'doubao';
+                doubaoBtn.textContent = 'Doubao Search';
+                
+                const rightButton = document.createElement('div');
+                rightButton.className = 'right-button';
+                
+                const executeBtn = document.createElement('button');
+                executeBtn.type = 'button';
+                executeBtn.className = 'execute-btn';
+                executeBtn.textContent = 'Execute';
+                
+                leftButtons.appendChild(searchBtn);
+                leftButtons.appendChild(deepBtn);
+                leftButtons.appendChild(doubaoBtn);
+                
+                rightButton.appendChild(executeBtn);
+                
+                buttonsDiv.appendChild(leftButtons);
+                buttonsDiv.appendChild(rightButton);
+                
+                form.appendChild(textarea);
+                form.appendChild(buttonsDiv);
+                
+                searchFrame.appendChild(form);
+                
+                // Add event listeners
+                executeBtn.addEventListener('click', function() {
+                    form.requestSubmit();
+                });
+                
+                textarea.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' && e.shiftKey) {
+                        e.preventDefault();
+                        form.requestSubmit();
+                    }
+                });
+                
+                setupTextareaResize(textarea);
+                
+                // Add form submit event
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const searchText = textarea.value.trim();
+                    if (!searchText) return;
+                    
+                    // Display the search query
+                    displaySearchQuery(searchText);
+                    
+                    // Process the search
+                    const result = await sendMessage(searchText, currentChatId);
+                    if (result) {
+                        currentChatId = result.chat_id;
+                        displaySearchResult(result.response);
+                        
+                        // Create a new search form after displaying results
+                        chatMessages.appendChild(createSearchForm());
+                        
+                        // Clear the current form
+                        textarea.value = '';
+                        textarea.style.height = 'auto';
+                    }
+                });
+                
+                return searchFrame;
+            }
+            
+            // Function to display search query
+            function displaySearchQuery(query) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message user-message';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon';
+                iconSpan.textContent = 'You';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.textContent = query;
+                
+                headerDiv.appendChild(iconSpan);
+                messageDiv.appendChild(headerDiv);
+                messageDiv.appendChild(contentDiv);
+                
+                chatMessages.appendChild(messageDiv);
+            }
+            
+            // Function to display search result
+            function displaySearchResult(response) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message ai-message';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '✺';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'AI';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.textContent = response.message;
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                messageDiv.appendChild(headerDiv);
+                messageDiv.appendChild(contentDiv);
+                
+                // Add search results if available
+                if (response.search_results && response.search_results.length > 0) {
+                    const resultsDiv = document.createElement('div');
+                    resultsDiv.className = 'search-results';
+                    
+                    response.search_results.forEach(result => {
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'result-item';
+                        
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'result-title';
+                        titleDiv.textContent = result.title || 'Untitled';
+                        
+                        const contentDiv = document.createElement('div');
+                        contentDiv.className = 'result-content';
+                        contentDiv.textContent = result.content || result.snippet || '';
+                        
+                        resultItem.appendChild(titleDiv);
+                        resultItem.appendChild(contentDiv);
+                        resultsDiv.appendChild(resultItem);
+                    });
+                    
+                    messageDiv.appendChild(resultsDiv);
+                }
+                
+                chatMessages.appendChild(messageDiv);
+                
+                // Scroll to the bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // Initialize the UI
             messageForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
                 const message = messageInput.value.trim();
-                if (message) {
-                    welcomeScreen.classList.add('hidden');
-                    chatScreen.classList.remove('hidden');
+                if (!message) return;
+                
+                // Switch from welcome screen to chat screen
+                welcomeScreen.classList.add('hidden');
+                chatScreen.classList.remove('hidden');
+                
+                // Display the search query
+                displaySearchQuery(message);
+                
+                // Process the search
+                const result = await sendMessage(message, currentChatId);
+                if (result) {
+                    currentChatId = result.chat_id;
+                    displaySearchResult(result.response);
                     
-                    // Clear the example messages
-                    chatMessages.innerHTML = '';
+                    // Create a new search form after displaying results
+                    chatMessages.appendChild(createSearchForm());
                     
-                    // Add user message to chat
-                    addMessage(message, 'user');
-                    
-                    // Clear input
+                    // Clear the input
                     messageInput.value = '';
-                    
-                    // Show loading indicator
-                    const loadingElement = document.createElement('div');
-                    loadingElement.classList.add('message', 'ai-message', 'loading');
-                    
-                    const headerElement = document.createElement('div');
-                    headerElement.classList.add('message-header');
-                    
-                    const iconElement = document.createElement('span');
-                    iconElement.classList.add('message-icon', 'ai-icon');
-                    iconElement.textContent = '✺';
-                    
-                    const nameElement = document.createElement('span');
-                    nameElement.textContent = 'AI';
-                    
-                    headerElement.appendChild(iconElement);
-                    headerElement.appendChild(nameElement);
-                    
-                    const contentElement = document.createElement('div');
-                    contentElement.classList.add('message-content');
-                    contentElement.textContent = 'Searching...';
-                    
-                    loadingElement.appendChild(headerElement);
-                    loadingElement.appendChild(contentElement);
-                    
-                    chatMessages.appendChild(loadingElement);
-                    
-                    try {
-                        console.log("Sending initial message to backend:", message);
-                        // Send message to backend
-                        const result = await sendMessage(message, currentChatId);
-                        
-                        // Remove loading indicator
-                        chatMessages.removeChild(loadingElement);
-                        
-                        if (result) {
-                            console.log("Received response:", result);
-                            currentChatId = result.chat_id;
-                            
-                            // Display AI response
-                            const response = result.response;
-                            addAIMessageWithResults(
-                                response.message,
-                                response.search_results
-                            );
-                        } else {
-                            console.error("No result returned from backend");
-                            // Show error message
-                            addErrorMessage("No response received from the server. Please check the backend logs.");
-                        }
-                    } catch (error) {
-                        console.error("Error during message processing:", error);
-                        // Remove loading indicator
-                        if (loadingElement.parentNode === chatMessages) {
-                            chatMessages.removeChild(loadingElement);
-                        }
-                        
-                        // Show detailed error message
-                        addErrorMessage(`Error: ${error.message || "Unknown error"}. Please check the console and backend logs for details.`);
-                    }
-                }
-                
-            });
-            
-            // Handle continued conversation
-            chatForm.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                
-                const message = chatInput.value.trim();
-                if (message) {
-                    // Add user message to chat
-                    addMessage(message, 'user');
-                    
-                    // Clear input
-                    chatInput.value = '';
-                    chatInput.style.height = 'auto';
-                    
-                    // Show loading indicator
-                    const loadingElement = document.createElement('div');
-                    loadingElement.classList.add('message', 'ai-message', 'loading');
-                    
-                    const headerElement = document.createElement('div');
-                    headerElement.classList.add('message-header');
-                    
-                    const iconElement = document.createElement('span');
-                    iconElement.classList.add('message-icon', 'ai-icon');
-                    iconElement.textContent = '✺';
-                    
-                    const nameElement = document.createElement('span');
-                    nameElement.textContent = 'AI';
-                    
-                    headerElement.appendChild(iconElement);
-                    headerElement.appendChild(nameElement);
-                    
-                    const contentElement = document.createElement('div');
-                    contentElement.classList.add('message-content');
-                    contentElement.textContent = 'Searching...';
-                    
-                    loadingElement.appendChild(headerElement);
-                    loadingElement.appendChild(contentElement);
-                    
-                    chatMessages.appendChild(loadingElement);
-                    
-                    try {
-                        console.log("Sending follow-up message to backend:", message);
-                        // Send message to backend
-                        const result = await sendMessage(message, currentChatId);
-                        
-                        // Remove loading indicator
-                        chatMessages.removeChild(loadingElement);
-                        
-                        if (result) {
-                            console.log("Received follow-up response:", result);
-                            // Display AI response
-                            const response = result.response;
-                            addAIMessageWithResults(
-                                response.message,
-                                response.search_results
-                            );
-                        } else {
-                            console.error("No result returned from backend for follow-up");
-                            // Show error message
-                            addErrorMessage("No response received from the server. Please check the backend logs.");
-                        }
-                    } catch (error) {
-                        console.error("Error during follow-up message processing:", error);
-                        // Remove loading indicator
-                        if (loadingElement.parentNode === chatMessages) {
-                            chatMessages.removeChild(loadingElement);
-                        }
-                        
-                        // Show detailed error message
-                        addErrorMessage(`Error: ${error.message || "Unknown error"}. Please check the console and backend logs for details.`);
-                    }
+                    messageInput.style.height = 'auto';
                 }
             });
             
-            function addMessage(text, sender) {
-                const messageElement = document.createElement('div');
-                messageElement.classList.add('message');
-                messageElement.classList.add(sender === 'user' ? 'user-message' : 'ai-message');
-                
-                const headerElement = document.createElement('div');
-                headerElement.classList.add('message-header');
-                
-                const iconElement = document.createElement('span');
-                iconElement.classList.add('message-icon');
-                if (sender === 'ai') iconElement.classList.add('ai-icon');
-                iconElement.textContent = sender === 'user' ? 'You' : '✺';
-                
-                headerElement.appendChild(iconElement);
-                
-                if (sender === 'ai') {
-                    const nameElement = document.createElement('span');
-                    nameElement.textContent = 'AI';
-                    headerElement.appendChild(nameElement);
-                }
-                
-                const contentElement = document.createElement('div');
-                contentElement.classList.add('message-content');
-                contentElement.textContent = text;
-                
-                messageElement.appendChild(headerElement);
-                messageElement.appendChild(contentElement);
-                
-                chatMessages.appendChild(messageElement);
-                
-                // Scroll to bottom
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-                
-                return messageElement;
-            }
+            // Execute search (submit form) when Execute button is clicked
+            const executeBtn = document.querySelector('.execute-btn');
+            executeBtn.addEventListener('click', function() {
+                messageForm.requestSubmit();
+            });
             
-            function addErrorMessage(text) {
-                const errorContainer = document.createElement('div');
-                errorContainer.classList.add('error-message');
-                errorContainer.textContent = text;
-                chatMessages.appendChild(errorContainer);
-                
-                // Scroll to bottom
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-            
-            function addAIMessageWithResults(text, results) {
-                const messageElement = addMessage(text, 'ai');
-                
-                if (results && results.length > 0) {
-                    const resultsContainer = document.createElement('div');
-                    resultsContainer.classList.add('search-results');
-                    
-                    results.forEach(result => {
-                        const resultItem = document.createElement('div');
-                        resultItem.classList.add('result-item');
-                        
-                        const titleElement = document.createElement('div');
-                        titleElement.classList.add('result-title');
-                        titleElement.textContent = result.title;
-                        
-                        const contentElement = document.createElement('div');
-                        contentElement.classList.add('result-content');
-                        contentElement.textContent = result.content;
-                        
-                        resultItem.appendChild(titleElement);
-                        resultItem.appendChild(contentElement);
-                        resultsContainer.appendChild(resultItem);
-                    });
-                    
-                    messageElement.appendChild(resultsContainer);
+            // Execute search when Shift+Enter is pressed in the textarea
+            messageInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && e.shiftKey) {
+                    e.preventDefault();
+                    messageForm.requestSubmit();
                 }
-                
-                // Scroll to bottom again after adding results
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
+            });
+            
+            // Auto-resize textarea as user types
+            setupTextareaResize(messageInput);
         });
     </script>
 </body>
 </html>
+
