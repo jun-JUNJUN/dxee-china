@@ -179,6 +179,7 @@ class ChatMessageHandler(tornado.web.RequestHandler):
                     'chat_id': chat_id,
                     'user_id': user_id,
                     'message': response.get('message', 'Here are the relevant results for your query.'),
+                    'formatted_message': response.get('formatted_message'),  # Add formatted message
                     'timestamp': datetime.utcnow(),
                     'type': 'assistant',
                     'search_results': response.get('search_results', []),

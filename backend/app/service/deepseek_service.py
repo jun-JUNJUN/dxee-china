@@ -6,6 +6,7 @@ import traceback
 from datetime import datetime
 from openai import OpenAI
 from openai import AsyncOpenAI
+from .message_formatter import MessageFormatter
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -23,6 +24,9 @@ class DeepSeekService:
         # Initialize OpenAI clients
         self.client = OpenAI(api_key=self.api_key, base_url=self.api_url)
         self.async_client = AsyncOpenAI(api_key=self.api_key, base_url=self.api_url)
+        
+        # Initialize message formatter
+        self.formatter = MessageFormatter()
         
         logger.info(f"DeepSeek service initialized with API URL: {self.api_url}")
         
@@ -305,11 +309,16 @@ class DeepSeekService:
             # Get chat completion using DeepSeek API
             completion_response = await self.async_chat_completion(query)
             
+            # Format the response message
+            raw_message = completion_response.get('content', 'No response from DeepSeek API.')
+            formatted_message = self.formatter.format_message(raw_message, "markdown")
+            
             # Create response with message_id to match the specific request
             response = {
                 'chat_id': chat_id,
                 'message_id': message_id,  # Include message_id for matching
-                'message': completion_response.get('content', 'No response from DeepSeek API.'),
+                'message': raw_message,  # Keep raw message for backward compatibility
+                'formatted_message': formatted_message,  # Add formatted version
                 'timestamp': datetime.utcnow().isoformat(),
                 'search_results': []  # Keep this for backward compatibility
             }
@@ -362,12 +371,16 @@ class DeepSeekService:
                     return
                 
                 if chunk.get('finished'):
+                    # Format the complete accumulated content
+                    formatted_message = self.formatter.format_message(accumulated_content, "markdown")
+                    
                     # Send final chunk with complete message
                     await stream_queue.put({
                         'chat_id': chat_id,
                         'message_id': message_id,
                         'type': 'complete',
                         'content': accumulated_content,
+                        'formatted_content': formatted_message,
                         'timestamp': datetime.utcnow().isoformat(),
                         'search_results': []
                     })

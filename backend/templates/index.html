@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dxee Chat</title>
+    <!-- Include marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <!-- Include highlight.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -266,6 +271,139 @@
             background: #00bcd4;
             color: #fff;
             border-color: #00bcd4;
+        }
+        
+        /* Markdown formatting styles */
+        .message-content h1, .message-content h2, .message-content h3,
+        .message-content h4, .message-content h5, .message-content h6 {
+            color: #f0f0f0;
+            margin: 16px 0 8px 0;
+            font-weight: 600;
+        }
+        
+        .message-content h1 { font-size: 1.8em; border-bottom: 2px solid #444; padding-bottom: 8px; }
+        .message-content h2 { font-size: 1.5em; border-bottom: 1px solid #444; padding-bottom: 6px; }
+        .message-content h3 { font-size: 1.3em; }
+        .message-content h4 { font-size: 1.1em; }
+        .message-content h5 { font-size: 1em; }
+        .message-content h6 { font-size: 0.9em; }
+        
+        .message-content strong, .message-content b {
+            color: #fff;
+            font-weight: 600;
+        }
+        
+        .message-content em, .message-content i {
+            color: #f0f0f0;
+            font-style: italic;
+        }
+        
+        .message-content code {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .message-content pre {
+            background-color: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            overflow-x: auto;
+            line-height: 1.4;
+        }
+        
+        .message-content pre code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            color: inherit;
+        }
+        
+        .message-content ul, .message-content ol {
+            margin: 12px 0;
+            padding-left: 24px;
+        }
+        
+        .message-content li {
+            margin: 6px 0;
+            line-height: 1.5;
+        }
+        
+        .message-content ul li {
+            list-style-type: disc;
+        }
+        
+        .message-content ol li {
+            list-style-type: decimal;
+        }
+        
+        .message-content blockquote {
+            border-left: 4px solid #ff9776;
+            margin: 12px 0;
+            padding: 8px 16px;
+            background-color: rgba(255, 151, 118, 0.1);
+            font-style: italic;
+        }
+        
+        .message-content a {
+            color: #00bcd4;
+            text-decoration: none;
+        }
+        
+        .message-content a:hover {
+            color: #26c6da;
+            text-decoration: underline;
+        }
+        
+        .message-content hr {
+            border: none;
+            border-top: 1px solid #444;
+            margin: 20px 0;
+        }
+        
+        .message-content p {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+        
+        .message-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12px 0;
+        }
+        
+        .message-content th, .message-content td {
+            border: 1px solid #444;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .message-content th {
+            background-color: #333;
+            font-weight: 600;
+        }
+        
+        .message-content del {
+            color: #888;
+            text-decoration: line-through;
+        }
+        
+        /* Ensure proper spacing for formatted content */
+        .message-content.formatted {
+            line-height: 1.6;
+        }
+        
+        .message-content.formatted > *:first-child {
+            margin-top: 0;
+        }
+        
+        .message-content.formatted > *:last-child {
+            margin-bottom: 0;
         }
     </style>
 </head>
@@ -889,10 +1027,28 @@
                                         currentChatId = data.chat_id;
                                     } else if (data.type === 'chunk') {
                                         accumulatedContent += data.content;
+                                        // For streaming, show plain text until complete
                                         contentDiv.textContent = accumulatedContent;
                                         chatMessages.scrollTop = chatMessages.scrollHeight;
                                     } else if (data.type === 'complete') {
-                                        contentDiv.textContent = data.content;
+                                        // Format the complete content as Markdown
+                                        if (data.formatted_content && data.formatted_content.formatted_content) {
+                                            contentDiv.innerHTML = data.formatted_content.formatted_content;
+                                            contentDiv.classList.add('formatted');
+                                        } else {
+                                            try {
+                                                contentDiv.innerHTML = marked.parse(data.content);
+                                                contentDiv.classList.add('formatted');
+                                            } catch (e) {
+                                                console.warn('Failed to parse markdown, using plain text:', e);
+                                                contentDiv.textContent = data.content;
+                                            }
+                                        }
+                                        
+                                        // Highlight code blocks
+                                        contentDiv.querySelectorAll('pre code').forEach((block) => {
+                                            hljs.highlightElement(block);
+                                        });
                                         
                                         // Add search results if available
                                         if (data.search_results && data.search_results.length > 0) {
