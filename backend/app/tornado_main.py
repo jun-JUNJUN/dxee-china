@@ -8,9 +8,11 @@ from dotenv import load_dotenv
 from meilisearch_python_sdk import AsyncClient
 from app.handler.search_handler import SearchHandler
 from app.handler.health_handler import HealthHandler
-from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler
+from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler
 from app.handler.main_handler import MainHandler, NotFoundHandler
+from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler
 from app.service.deepseek_service import DeepSeekService
+from app.service.mongodb_service import MongoDBService
 
 # Configure logging
 logging.basicConfig(
@@ -44,6 +46,16 @@ class Application(tornado.web.Application):
             (r"/health", HealthHandler),
             (r"/chat/message", ChatMessageHandler),
             (r"/chat/history/([^/]+)", ChatHistoryHandler),
+            (r"/chat/user", UserChatsHandler),
+            (r"/chat/share/([^/]+)", ShareMessageHandler),
+            (r"/chat/shared", SharedMessagesHandler),
+            (r"/auth/register", RegisterHandler),
+            (r"/auth/login", LoginHandler),
+            (r"/auth/logout", LogoutHandler),
+            (r"/auth/google", GoogleOAuthHandler),
+            (r"/auth/microsoft", MicrosoftOAuthHandler),
+            (r"/auth/apple", AppleOAuthHandler),
+            (r"/auth/profile", UserProfileHandler),
             (r"/", MainHandler),  # Main page handler
         ]
         
@@ -51,7 +63,24 @@ class Application(tornado.web.Application):
             'debug': True,
             'autoreload': True,
             'template_path': 'templates',  # Path to templates directory
-            'default_handler_class': NotFoundHandler  # 404 handler
+            'default_handler_class': NotFoundHandler,  # 404 handler
+            'cookie_secret': os.environ.get('AUTH_SECRET_KEY', 'default_secret_key_change_in_production'),
+            'login_url': '/auth/login',
+            'google_oauth': {
+                'client_id': os.environ.get('GOOGLE_CLIENT_ID', ''),
+                'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET', ''),
+                'redirect_uri': os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:8888/auth/google')
+            },
+            'microsoft_oauth': {
+                'client_id': os.environ.get('MICROSOFT_CLIENT_ID', ''),
+                'client_secret': os.environ.get('MICROSOFT_CLIENT_SECRET', ''),
+                'redirect_uri': os.environ.get('MICROSOFT_REDIRECT_URI', 'http://localhost:8888/auth/microsoft')
+            },
+            'apple_oauth': {
+                'client_id': os.environ.get('APPLE_CLIENT_ID', ''),
+                'client_secret': os.environ.get('APPLE_CLIENT_SECRET', ''),
+                'redirect_uri': os.environ.get('APPLE_REDIRECT_URI', 'http://localhost:8888/auth/apple')
+            }
         }
         
         super().__init__(handlers, **settings)
@@ -61,6 +90,11 @@ class Application(tornado.web.Application):
         meilisearch_api_key = os.environ.get('MEILISEARCH_API_KEY', 'masterKey')
         logger.info(f"Initializing Meilisearch client with host: {meilisearch_host}")
         self.meilisearch = AsyncClient(meilisearch_host, meilisearch_api_key)
+        
+        # Initialize MongoDB service
+        io_loop = tornado.ioloop.IOLoop.current()
+        self.mongodb = MongoDBService(io_loop=io_loop)
+        logger.info("MongoDB service initialized")
         
         # Store queue references
         self.input_queue = input_queue
@@ -85,6 +119,7 @@ def make_app():
         deepseek_service = DeepSeekService(input_queue, output_queue)
 
     # Create and return the Tornado application
+    # MongoDB service will be initialized within the Application class
     return Application(input_queue, output_queue)
 
 # This is the application callable that Gunicorn expects
@@ -101,10 +136,25 @@ async def start_deepseek_service():
             logger.error(f"Error in DeepSeek service processing loop: {e}")
             logger.error(traceback.format_exc())
 
-# Add the DeepSeek service task to the IOLoop
-def start_background_tasks():
+# Create MongoDB indexes
+async def create_mongodb_indexes(app_instance):
+    try:
+        if hasattr(app_instance, 'mongodb'):
+            logger.info("Creating MongoDB indexes")
+            await app_instance.mongodb.create_indexes()
+            logger.info("MongoDB indexes created successfully")
+        else:
+            logger.warning("MongoDB service not found in application instance")
+    except Exception as e:
+        logger.error(f"Error creating MongoDB indexes: {e}")
+        logger.error(traceback.format_exc())
+
+# Add the background tasks to the IOLoop
+def start_background_tasks(app_instance=None):
     logger.info("Starting background tasks")
     asyncio.ensure_future(start_deepseek_service())
+    if app_instance:
+        asyncio.ensure_future(create_mongodb_indexes(app_instance))
 
 if __name__ == "__main__":
     # This is for running the application directly (not through Gunicorn)
@@ -114,7 +164,7 @@ if __name__ == "__main__":
 
     # Start background tasks
     io_loop = tornado.ioloop.IOLoop.current()
-    io_loop.add_callback(start_background_tasks)
+    io_loop.add_callback(lambda: start_background_tasks(app))
 
     try:
         logger.info("Starting IOLoop")

@@ -35,7 +35,7 @@ try:
 
     # Add a callback to start background tasks after the server starts
     logger.info("Adding callback to start background tasks")
-    io_loop.add_callback(start_background_tasks)
+    io_loop.add_callback(lambda: start_background_tasks(app))
 
     # This is the WSGI application callable that Gunicorn expects
     application = app

@@ -3,10 +3,21 @@ import json
 import uuid
 import logging
 import traceback
+import json
 from datetime import datetime
+from bson import ObjectId, json_util
 
 # Get logger
 logger = logging.getLogger(__name__)
+
+# Custom JSON encoder for MongoDB objects
+class MongoJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return json_util.default(obj)
 
 class ChatMessageHandler(tornado.web.RequestHandler):
     """
@@ -39,24 +50,60 @@ class ChatMessageHandler(tornado.web.RequestHandler):
                 chat_id = str(uuid.uuid4())
                 logger.info(f"Generated new chat_id: {chat_id}")
             
+            # Get user_id from request (would come from authentication in a real app)
+            user_id = self.get_secure_cookie("user_id")
+            if user_id:
+                user_id = user_id.decode('utf-8')
+            else:
+                # For development/testing, use a default user ID
+                user_id = "default_user"
+            
+            # Check if chat exists
+            chat = None
+            if chat_id:
+                chat = await self.application.mongodb.get_chat_by_id(chat_id)
+                
+                # If chat doesn't exist, create a new one
+                if not chat:
+                    chat_id = str(uuid.uuid4())
+                    chat_doc = {
+                        'chat_id': chat_id,  # Keep the UUID format for compatibility
+                        'user_id': user_id,
+                        'title': message[:30] + "..." if len(message) > 30 else message
+                    }
+                    await self.application.mongodb.create_chat(chat_doc)
+                    logger.info(f"Created new chat with ID: {chat_id}")
+            else:
+                # Create a new chat
+                chat_id = str(uuid.uuid4())
+                chat_doc = {
+                    'chat_id': chat_id,  # Keep the UUID format for compatibility
+                    'user_id': user_id,
+                    'title': message[:30] + "..." if len(message) > 30 else message
+                }
+                await self.application.mongodb.create_chat(chat_doc)
+                logger.info(f"Created new chat with ID: {chat_id}")
+            
             # Create message document
             message_doc = {
-                'id': str(uuid.uuid4()),
+                'message_id': str(uuid.uuid4()),  # Keep the UUID format for compatibility
                 'chat_id': chat_id,
+                'user_id': user_id,
                 'message': message,
-                'timestamp': datetime.utcnow().isoformat(),
-                'type': 'user'
+                'timestamp': datetime.utcnow(),
+                'type': 'user',
+                'shared': False
             }
             
-            message_id = message_doc['id']
+            message_id = message_doc['message_id']
             
-            # Store the message in chat history
+            # Store the message in MongoDB
             try:
-                logger.info(f"Storing message in chat history for chat_id: {chat_id}")
-                await self.application.meilisearch.index('chat_history').add_documents([message_doc])
-                logger.info("Message stored successfully")
+                logger.info(f"Storing message in MongoDB for chat_id: {chat_id}")
+                await self.application.mongodb.create_message(message_doc)
+                logger.info("Message stored successfully in MongoDB")
             except Exception as e:
-                logger.error(f"Error storing message in chat history: {e}")
+                logger.error(f"Error storing message in MongoDB: {e}")
                 logger.error(traceback.format_exc())
                 # Continue processing even if storage fails
             
@@ -127,26 +174,33 @@ class ChatMessageHandler(tornado.web.RequestHandler):
             # Create response document
             try:
                 response_doc = {
-                    'id': str(uuid.uuid4()),
+                    'message_id': str(uuid.uuid4()),  # Keep the UUID format for compatibility
                     'chat_id': chat_id,
+                    'user_id': user_id,
                     'message': response.get('message', 'Here are the relevant results for your query.'),
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': datetime.utcnow(),
                     'type': 'assistant',
-                    'search_results': response.get('search_results', [])
+                    'search_results': response.get('search_results', []),
+                    'shared': False
                 }
                 
-                # Store the response in chat history
-                logger.info(f"Storing response in chat history for chat_id: {chat_id}")
-                await self.application.meilisearch.index('chat_history').add_documents([response_doc])
-                logger.info("Response stored successfully")
+                # Store the response in MongoDB
+                logger.info(f"Storing response in MongoDB for chat_id: {chat_id}")
+                await self.application.mongodb.create_message(response_doc)
+                logger.info("Response stored successfully in MongoDB")
                 
                 # Return the response
+                # Convert MongoDB document to JSON-serializable format
+                response_doc['_id'] = str(response_doc.get('_id', ''))
+                response_doc['timestamp'] = response_doc['timestamp'].isoformat()
+                
                 result = {
                     'chat_id': chat_id,
                     'response': response_doc
                 }
                 logger.info(f"Returning response to client for chat_id: {chat_id}")
-                self.write(result)
+                self.write(json.dumps(result, cls=MongoJSONEncoder))
+                self.set_header('Content-Type', 'application/json')
             except Exception as e:
                 logger.error(f"Error processing response: {e}")
                 logger.error(traceback.format_exc())
@@ -172,31 +226,210 @@ class ChatHistoryHandler(tornado.web.RequestHandler):
         try:
             logger.info(f"Getting chat history for chat_id: {chat_id}")
             
-            # Search for messages with the given chat ID
+            # Get user_id from request (would come from authentication in a real app)
+            user_id = self.get_secure_cookie("user_id")
+            if user_id:
+                user_id = user_id.decode('utf-8')
+            else:
+                # For development/testing, use a default user ID
+                user_id = "default_user"
+            
+            # Get chat to verify ownership
+            chat = await self.application.mongodb.get_chat_by_id(chat_id)
+            
+            if not chat:
+                logger.warning(f"Chat not found: {chat_id}")
+                self.set_status(404)
+                self.write({'error': 'Chat not found'})
+                return
+            
+            # In a real app, you would check if the user owns this chat
+            # if chat.get('user_id') != user_id:
+            #     logger.warning(f"Unauthorized access to chat: {chat_id}")
+            #     self.set_status(403)
+            #     self.write({'error': 'Unauthorized'})
+            #     return
+            
+            # Get messages from MongoDB
             try:
-                results = await self.application.meilisearch.index('chat_history').search(
-                    '',
-                    {
-                        'filter': f'chat_id = {chat_id}',
-                        'sort': ['timestamp:asc'],
-                        'limit': 100
-                    }
-                )
+                messages = await self.application.mongodb.get_chat_messages(chat_id)
                 
-                message_count = len(results.get('hits', []))
+                message_count = len(messages)
                 logger.info(f"Retrieved {message_count} messages for chat_id: {chat_id}")
                 
-                self.write({
+                # Convert MongoDB documents to JSON-serializable format
+                for message in messages:
+                    message['_id'] = str(message['_id'])
+                    if isinstance(message.get('timestamp'), datetime):
+                        message['timestamp'] = message['timestamp'].isoformat()
+                
+                self.write(json.dumps({
                     'chat_id': chat_id,
-                    'messages': results['hits']
-                })
+                    'messages': messages
+                }, cls=MongoJSONEncoder))
+                self.set_header('Content-Type', 'application/json')
             except Exception as e:
-                logger.error(f"Error searching Meilisearch: {e}")
+                logger.error(f"Error retrieving messages from MongoDB: {e}")
                 logger.error(traceback.format_exc())
                 self.set_status(500)
                 self.write({'error': f'Error retrieving chat history: {str(e)}'})
         except Exception as e:
             logger.error(f"Unexpected error in ChatHistoryHandler: {e}")
+            logger.error(traceback.format_exc())
+            self.set_status(500)
+            self.write({'error': f'Server error: {str(e)}'})
+
+class UserChatsHandler(tornado.web.RequestHandler):
+    """
+    Handler for retrieving a user's chats
+    """
+    async def get(self):
+        try:
+            # Get user_id from request (would come from authentication in a real app)
+            user_id = self.get_secure_cookie("user_id")
+            if user_id:
+                user_id = user_id.decode('utf-8')
+            else:
+                # For development/testing, use a default user ID
+                user_id = "default_user"
+            
+            logger.info(f"Getting chats for user_id: {user_id}")
+            
+            # Get pagination parameters
+            limit = int(self.get_argument('limit', 20))
+            skip = int(self.get_argument('skip', 0))
+            
+            # Get chats from MongoDB
+            try:
+                chats = await self.application.mongodb.get_user_chats(user_id, limit, skip)
+                
+                chat_count = len(chats)
+                logger.info(f"Retrieved {chat_count} chats for user_id: {user_id}")
+                
+                # Convert MongoDB documents to JSON-serializable format
+                for chat in chats:
+                    chat['_id'] = str(chat['_id'])
+                    if isinstance(chat.get('created_at'), datetime):
+                        chat['created_at'] = chat['created_at'].isoformat()
+                    if isinstance(chat.get('updated_at'), datetime):
+                        chat['updated_at'] = chat['updated_at'].isoformat()
+                
+                self.write(json.dumps({
+                    'user_id': user_id,
+                    'chats': chats
+                }, cls=MongoJSONEncoder))
+                self.set_header('Content-Type', 'application/json')
+            except Exception as e:
+                logger.error(f"Error retrieving chats from MongoDB: {e}")
+                logger.error(traceback.format_exc())
+                self.set_status(500)
+                self.write({'error': f'Error retrieving chats: {str(e)}'})
+        except Exception as e:
+            logger.error(f"Unexpected error in UserChatsHandler: {e}")
+            logger.error(traceback.format_exc())
+            self.set_status(500)
+            self.write({'error': f'Server error: {str(e)}'})
+
+class ShareMessageHandler(tornado.web.RequestHandler):
+    """
+    Handler for sharing a message
+    """
+    async def post(self, message_id):
+        try:
+            # Get user_id from request (would come from authentication in a real app)
+            user_id = self.get_secure_cookie("user_id")
+            if user_id:
+                user_id = user_id.decode('utf-8')
+            else:
+                # For development/testing, use a default user ID
+                user_id = "default_user"
+            
+            logger.info(f"Sharing message: {message_id}")
+            
+            # Parse request body
+            try:
+                data = json.loads(self.request.body)
+                share = data.get('share', True)
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in request: {e}")
+                self.set_status(400)
+                self.write({'error': f'Invalid JSON: {str(e)}'})
+                return
+            
+            # Update message in MongoDB
+            try:
+                result = await self.application.mongodb.share_message(message_id, share)
+                
+                if result > 0:
+                    logger.info(f"Message {message_id} {'shared' if share else 'unshared'} successfully")
+                    
+                    # If sharing, also add to Meilisearch for search
+                    if share:
+                        # Get the message from MongoDB
+                        message = await self.application.mongodb.messages.find_one({"_id": ObjectId(message_id)})
+                        
+                        if message:
+                            # Convert MongoDB document to JSON-serializable format
+                            message_doc = json.loads(json_util.dumps(message))
+                            
+                            # Add to Meilisearch
+                            await self.application.meilisearch.index('chat_history').add_documents([message_doc])
+                            logger.info(f"Message {message_id} added to Meilisearch for search")
+                    
+                    self.write({'success': True})
+                else:
+                    logger.warning(f"Message not found: {message_id}")
+                    self.set_status(404)
+                    self.write({'error': 'Message not found'})
+            except Exception as e:
+                logger.error(f"Error updating message in MongoDB: {e}")
+                logger.error(traceback.format_exc())
+                self.set_status(500)
+                self.write({'error': f'Error sharing message: {str(e)}'})
+        except Exception as e:
+            logger.error(f"Unexpected error in ShareMessageHandler: {e}")
+            logger.error(traceback.format_exc())
+            self.set_status(500)
+            self.write({'error': f'Server error: {str(e)}'})
+
+class SharedMessagesHandler(tornado.web.RequestHandler):
+    """
+    Handler for retrieving shared messages
+    """
+    async def get(self):
+        try:
+            logger.info("Getting shared messages")
+            
+            # Get pagination parameters
+            limit = int(self.get_argument('limit', 20))
+            skip = int(self.get_argument('skip', 0))
+            
+            # Get shared messages from MongoDB
+            try:
+                messages = await self.application.mongodb.get_shared_messages(limit, skip)
+                
+                message_count = len(messages)
+                logger.info(f"Retrieved {message_count} shared messages")
+                
+                # Convert MongoDB documents to JSON-serializable format
+                for message in messages:
+                    message['_id'] = str(message['_id'])
+                    if isinstance(message.get('timestamp'), datetime):
+                        message['timestamp'] = message['timestamp'].isoformat()
+                    if isinstance(message.get('shared_at'), datetime):
+                        message['shared_at'] = message['shared_at'].isoformat()
+                
+                self.write(json.dumps({
+                    'messages': messages
+                }, cls=MongoJSONEncoder))
+                self.set_header('Content-Type', 'application/json')
+            except Exception as e:
+                logger.error(f"Error retrieving shared messages from MongoDB: {e}")
+                logger.error(traceback.format_exc())
+                self.set_status(500)
+                self.write({'error': f'Error retrieving shared messages: {str(e)}'})
+        except Exception as e:
+            logger.error(f"Unexpected error in SharedMessagesHandler: {e}")
             logger.error(traceback.format_exc())
             self.set_status(500)
             self.write({'error': f'Server error: {str(e)}'})
