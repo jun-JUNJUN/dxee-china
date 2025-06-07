@@ -31,8 +31,9 @@ class ChatMessageHandler(tornado.web.RequestHandler):
                 data = json.loads(self.request.body)
                 message = data.get('message')
                 chat_id = data.get('chat_id')
+                search_mode = data.get('search_mode', 'search')
                 
-                logger.info(f"Received message: {message[:30]}... for chat: {chat_id or 'new chat'}")
+                logger.info(f"Received message: {message[:30]}... for chat: {chat_id or 'new chat'}, mode: {search_mode}")
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON in request: {e}")
                 logger.error(f"Request body: {self.request.body}")
@@ -110,11 +111,12 @@ class ChatMessageHandler(tornado.web.RequestHandler):
             
             # Add the message to the input queue for processing by DeepSeek
             try:
-                logger.info(f"Adding message to input queue for chat_id: {chat_id}, message_id: {message_id}")
+                logger.info(f"Adding message to input queue for chat_id: {chat_id}, message_id: {message_id}, mode: {search_mode}")
                 self.application.input_queue.append({
                     'message': message,
                     'chat_id': chat_id,
-                    'message_id': message_id
+                    'message_id': message_id,
+                    'search_mode': search_mode
                 })
                 logger.info(f"Queue size after adding: {len(self.application.input_queue)}")
             except Exception as e:
@@ -406,8 +408,9 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                 message = data.get('message')
                 chat_id = data.get('chat_id')
                 chat_history = data.get('chat_history', [])
+                search_mode = data.get('search_mode', 'search')
                 
-                logger.info(f"Received streaming message: {message[:30]}... for chat: {chat_id or 'new chat'}")
+                logger.info(f"Received streaming message: {message[:30]}... for chat: {chat_id or 'new chat'}, mode: {search_mode}")
                 logger.info(f"Chat history provided: {len(chat_history)} messages")
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON in request: {e}")
@@ -506,13 +509,14 @@ class ChatStreamHandler(tornado.web.RequestHandler):
             
             # Add the message to the input queue for processing by DeepSeek with streaming flag
             try:
-                logger.info(f"Adding streaming message to input queue for chat_id: {chat_id}, message_id: {message_id}")
+                logger.info(f"Adding streaming message to input queue for chat_id: {chat_id}, message_id: {message_id}, mode: {search_mode}")
                 self.application.input_queue.append({
                     'message': message,
                     'chat_id': chat_id,
                     'message_id': message_id,
                     'streaming': True,
-                    'chat_history': chat_history
+                    'chat_history': chat_history,
+                    'search_mode': search_mode
                 })
                 logger.info(f"Queue size after adding: {len(self.application.input_queue)}")
             except Exception as e:
@@ -557,6 +561,10 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                             self.write(f"data: {json.dumps(chunk)}\n\n")
                             await self.flush()
                             break
+                        elif chunk['type'] == 'reasoning_chunk':
+                            # Handle reasoning content chunks
+                            self.write(f"data: {json.dumps(chunk)}\n\n")
+                            await self.flush()
                         elif chunk['type'] == 'chunk':
                             accumulated_content += chunk['content']
                             self.write(f"data: {json.dumps(chunk)}\n\n")

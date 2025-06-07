@@ -34,7 +34,7 @@ class DeepSeekService:
             logger.warning("DEEPSEEK_API_KEY environment variable not set")
             logger.warning("Please set DEEPSEEK_API_KEY in your .env file")
     
-    def chat_completion(self, query, system_message="You are a helpful assistant", max_retries=6):
+    def chat_completion(self, query, system_message="You are a helpful assistant", max_retries=6, search_mode="search"):
             """
             Get a chat completion from the DeepSeek API using the synchronous client
             
@@ -42,12 +42,16 @@ class DeepSeekService:
                 query (str): The user query
                 system_message (str): The system message to set the assistant's behavior
                 max_retries (int): Maximum number of retry attempts for API calls
+                search_mode (str): The search mode ('search', 'deep', 'doubao')
                 
             Returns:
                 dict: Chat completion response from DeepSeek
             """
-            # List of models to try if the primary model fails
-            models_to_try = ["deepseek-chat", "deepseek-reasoner"]
+            # Select model based on search mode
+            if search_mode == "deep":
+                models_to_try = ["deepseek-reasoner", "deepseek-chat"]
+            else:
+                models_to_try = ["deepseek-chat", "deepseek-reasoner"]
             
             # Track which model we're using
             current_model = models_to_try[0]
@@ -110,7 +114,7 @@ class DeepSeekService:
                     # Return error response after all retries fail
                     return {"content": f"Error: {error_msg}. Please try again later."}
     
-    async def async_chat_completion(self, query, system_message="You are a helpful assistant", max_retries=6):
+    async def async_chat_completion(self, query, system_message="You are a helpful assistant", max_retries=6, search_mode="search"):
             """
             Get a chat completion from the DeepSeek API using the asynchronous client
             
@@ -118,12 +122,16 @@ class DeepSeekService:
                 query (str): The user query
                 system_message (str): The system message to set the assistant's behavior
                 max_retries (int): Maximum number of retry attempts for API calls
+                search_mode (str): The search mode ('search', 'deep', 'doubao')
                 
             Returns:
                 dict: Chat completion response from DeepSeek
             """
-            # List of models to try if the primary model fails
-            models_to_try = ["deepseek-chat", "deepseek-reasoner"]
+            # Select model based on search mode
+            if search_mode == "deep":
+                models_to_try = ["deepseek-reasoner", "deepseek-chat"]
+            else:
+                models_to_try = ["deepseek-chat", "deepseek-reasoner"]
             
             # Track which model we're using
             current_model = models_to_try[0]
@@ -184,7 +192,7 @@ class DeepSeekService:
                     # Return error response after all retries fail
                     return {"content": f"Error: {error_msg}. Please try again later."}
     
-    async def async_chat_completion_stream(self, query, system_message="You are a helpful assistant", chat_history=None, max_retries=6):
+    async def async_chat_completion_stream(self, query, system_message="You are a helpful assistant", chat_history=None, max_retries=6, search_mode="search"):
             """
             Get a streaming chat completion from the DeepSeek API using the asynchronous client
             
@@ -193,12 +201,16 @@ class DeepSeekService:
                 system_message (str): The system message to set the assistant's behavior
                 chat_history (list): Previous chat messages for context
                 max_retries (int): Maximum number of retry attempts for API calls
+                search_mode (str): The search mode ('search', 'deep', 'doubao')
                 
             Yields:
                 dict: Streaming chunks from DeepSeek API
             """
-            # List of models to try if the primary model fails
-            models_to_try = ["deepseek-chat", "deepseek-reasoner"]
+            # Select model based on search mode
+            if search_mode == "deep":
+                models_to_try = ["deepseek-reasoner", "deepseek-chat"]
+            else:
+                models_to_try = ["deepseek-chat", "deepseek-reasoner"]
             
             # Track which model we're using
             current_model = models_to_try[0]
@@ -234,20 +246,42 @@ class DeepSeekService:
                     
                     logger.info("Async streaming chat completion request successful")
                     
+                    reasoning_content = ""
+                    content = ""
+                    
                     async for chunk in stream:
-                        if chunk.choices[0].delta.content:
+                        # Handle reasoning content (specific to deepseek-reasoner model)
+                        if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
+                            reasoning_content += chunk.choices[0].delta.reasoning_content
+                            yield {
+                                "model": chunk.model if hasattr(chunk, 'model') else current_model,
+                                "id": chunk.id if hasattr(chunk, 'id') else None,
+                                "created": chunk.created if hasattr(chunk, 'created') else None,
+                                "reasoning_content": chunk.choices[0].delta.reasoning_content,
+                                "content_type": "reasoning",
+                                "finished": False
+                            }
+                        # Handle regular content
+                        elif chunk.choices[0].delta.content:
+                            content += chunk.choices[0].delta.content
                             yield {
                                 "model": chunk.model if hasattr(chunk, 'model') else current_model,
                                 "id": chunk.id if hasattr(chunk, 'id') else None,
                                 "created": chunk.created if hasattr(chunk, 'created') else None,
                                 "content": chunk.choices[0].delta.content,
+                                "content_type": "answer",
                                 "finished": False
                             }
                     
-                    # Send finish signal
+                    # Send finish signal with complete reasoning and content
                     yield {
                         "model": current_model,
-                        "content": "",
+                        "content": content,
+                        "reasoning_content": reasoning_content,
+                        "reasoning_chunks": reasoning_content.count('\n') + 1 if reasoning_content else 0,
+                        "answer_chunks": content.count(' ') + 1 if content else 0,
+                        "reasoning_length": len(reasoning_content) if reasoning_content else 0,
+                        "answer_length": len(content) if content else 0,
                         "finished": True
                     }
                     return
@@ -303,11 +337,12 @@ class DeepSeekService:
             query = message_data.get('message', '')
             chat_id = message_data.get('chat_id')
             message_id = message_data.get('message_id', 'unknown')
+            search_mode = message_data.get('search_mode', 'search')
             
-            logger.info(f"Processing message: {query[:30]}... (ID: {message_id}, Chat: {chat_id})")
+            logger.info(f"Processing message: {query[:30]}... (ID: {message_id}, Chat: {chat_id}, Mode: {search_mode})")
             
-            # Get chat completion using DeepSeek API
-            completion_response = await self.async_chat_completion(query)
+            # Get chat completion using DeepSeek API with search mode
+            completion_response = await self.async_chat_completion(query, search_mode=search_mode)
             
             # Format the response message
             raw_message = completion_response.get('content', 'No response from DeepSeek API.')
@@ -350,15 +385,18 @@ class DeepSeekService:
             query = message_data.get('message', '')
             chat_id = message_data.get('chat_id')
             message_id = message_data.get('message_id', 'unknown')
+            search_mode = message_data.get('search_mode', 'search')
             
-            logger.info(f"Processing streaming message: {query[:30]}... (ID: {message_id}, Chat: {chat_id})")
+            logger.info(f"Processing streaming message: {query[:30]}... (ID: {message_id}, Chat: {chat_id}, Mode: {search_mode})")
             
             # Get chat history from message data
             chat_history = message_data.get('chat_history', [])
             
-            # Process streaming chat completion
+            # Process streaming chat completion with search mode
             accumulated_content = ""
-            async for chunk in self.async_chat_completion_stream(query, chat_history=chat_history):
+            accumulated_reasoning = ""
+            
+            async for chunk in self.async_chat_completion_stream(query, chat_history=chat_history, search_mode=search_mode):
                 if chunk.get('error'):
                     # Send error chunk
                     await stream_queue.put({
@@ -373,30 +411,56 @@ class DeepSeekService:
                 if chunk.get('finished'):
                     # Format the complete accumulated content
                     formatted_message = self.formatter.format_message(accumulated_content, "markdown")
+                    formatted_reasoning = self.formatter.format_message(accumulated_reasoning, "markdown") if accumulated_reasoning else None
                     
-                    # Send final chunk with complete message
+                    # Send final chunk with complete message and reasoning
                     await stream_queue.put({
                         'chat_id': chat_id,
                         'message_id': message_id,
                         'type': 'complete',
                         'content': accumulated_content,
+                        'reasoning_content': accumulated_reasoning,
                         'formatted_content': formatted_message,
+                        'formatted_reasoning': formatted_reasoning,
                         'timestamp': datetime.utcnow().isoformat(),
                         'search_results': []
                     })
                     logger.info(f"Streaming completed for chat_id: {chat_id}")
                     return
                 else:
-                    # Send streaming chunk
-                    content = chunk.get('content', '')
-                    accumulated_content += content
-                    await stream_queue.put({
-                        'chat_id': chat_id,
-                        'message_id': message_id,
-                        'type': 'chunk',
-                        'content': content,
-                        'timestamp': datetime.utcnow().isoformat()
-                    })
+                    # Handle reasoning content chunks
+                    if chunk.get('content_type') == 'reasoning':
+                        reasoning_content = chunk.get('reasoning_content', '')
+                        accumulated_reasoning += reasoning_content
+                        await stream_queue.put({
+                            'chat_id': chat_id,
+                            'message_id': message_id,
+                            'type': 'reasoning_chunk',
+                            'reasoning_content': reasoning_content,
+                            'timestamp': datetime.utcnow().isoformat()
+                        })
+                    # Handle regular content chunks
+                    elif chunk.get('content_type') == 'answer':
+                        content = chunk.get('content', '')
+                        accumulated_content += content
+                        await stream_queue.put({
+                            'chat_id': chat_id,
+                            'message_id': message_id,
+                            'type': 'chunk',
+                            'content': content,
+                            'timestamp': datetime.utcnow().isoformat()
+                        })
+                    # Handle legacy chunks (for backward compatibility)
+                    else:
+                        content = chunk.get('content', '')
+                        accumulated_content += content
+                        await stream_queue.put({
+                            'chat_id': chat_id,
+                            'message_id': message_id,
+                            'type': 'chunk',
+                            'content': content,
+                            'timestamp': datetime.utcnow().isoformat()
+                        })
                     
         except Exception as e:
             logger.error(f"Error processing streaming message: {e}")

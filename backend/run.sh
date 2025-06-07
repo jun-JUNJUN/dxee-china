@@ -1,4 +1,7 @@
 #!/bin/bash
+# Clear any conflicting virtual environment variables
+unset VIRTUAL_ENV
+
 # Set environment variables
 export PYTHONUNBUFFERED=1
 export MEILISEARCH_URL=http://localhost:7701

@@ -258,7 +258,7 @@
             cursor: pointer;
             background: #232526;
             color: #fff;
-            transition: background 0.2s, border-color 0.2s;
+            transition: background 0.2s, border-color 0.2s, opacity 0.2s;
         }
         .search-btn {
             border-color: #00bcd4;
@@ -271,6 +271,16 @@
             background: #00bcd4;
             color: #fff;
             border-color: #00bcd4;
+        }
+        .search-btn.disabled, .deep-btn.disabled, .doubao-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #232526;
+            border-color: #666;
+        }
+        .search-btn.disabled:hover, .deep-btn.disabled:hover, .doubao-btn.disabled:hover {
+            background: #232526;
+            border-color: #666;
         }
         
         /* Markdown formatting styles */
@@ -468,13 +478,14 @@
             
             setupTextareaResize(messageInput);
             
-            // Track current chat session
+            // Track current chat session and search mode
             let currentChatId = null;
+            let currentSearchMode = 'search'; // Default to 'search' mode
             
             // Function to send message to the backend API
-            async function sendMessage(message, chatId = null) {
+            async function sendMessage(message, chatId = null, searchMode = 'search') {
                 try {
-                    console.log(`Sending message to backend: ${message.substring(0, 30)}... with chatId: ${chatId}`);
+                    console.log(`Sending message to backend: ${message.substring(0, 30)}... with chatId: ${chatId}, mode: ${searchMode}`);
                     const response = await fetch('/chat/message', {
                         method: 'POST',
                         headers: {
@@ -482,7 +493,8 @@
                         },
                         body: JSON.stringify({
                             message: message,
-                            chat_id: chatId
+                            chat_id: chatId,
+                            search_mode: searchMode
                         }),
                     });
                     
@@ -577,7 +589,38 @@
                 
                 searchFrame.appendChild(form);
                 
-                // Add event listeners
+                // Add event listeners for mode selection
+                const selectableBtns = form.querySelectorAll('.selectable-btn');
+                selectableBtns.forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        // Don't allow clicking disabled buttons
+                        if (this.classList.contains('disabled')) {
+                            return;
+                        }
+                        
+                        // Remove selected and disabled classes from all buttons
+                        selectableBtns.forEach(b => {
+                            b.classList.remove('selected', 'disabled');
+                        });
+                        
+                        // Add selected class to clicked button
+                        this.classList.add('selected');
+                        
+                        // Update current search mode
+                        currentSearchMode = this.dataset.mode;
+                        console.log('Search mode changed to:', currentSearchMode);
+                        
+                        // Handle Deep Search mode - disable other buttons
+                        if (currentSearchMode === 'deep') {
+                            selectableBtns.forEach(b => {
+                                if (b.dataset.mode !== 'deep') {
+                                    b.classList.add('disabled');
+                                }
+                            });
+                        }
+                    });
+                });
+                
                 executeBtn.addEventListener('click', function() {
                     form.requestSubmit();
                 });
@@ -639,7 +682,7 @@
                     textarea.style.height = 'auto';
                     
                     // Process the search asynchronously
-                    sendMessage(searchText, currentChatId).then(result => {
+                    sendMessage(searchText, currentChatId, currentSearchMode).then(result => {
                         if (result) {
                             currentChatId = result.chat_id;
                             
@@ -867,6 +910,70 @@
                 await displayStreamingResponse(message);
             });
             
+            // Handle mode selection for welcome screen
+            const welcomeSelectableBtns = document.querySelectorAll('#welcome-screen .selectable-btn');
+            welcomeSelectableBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Don't allow clicking disabled buttons
+                    if (this.classList.contains('disabled')) {
+                        return;
+                    }
+                    
+                    // Remove selected and disabled classes from all buttons in welcome screen
+                    welcomeSelectableBtns.forEach(b => {
+                        b.classList.remove('selected', 'disabled');
+                    });
+                    
+                    // Add selected class to clicked button
+                    this.classList.add('selected');
+                    
+                    // Update current search mode
+                    currentSearchMode = this.dataset.mode;
+                    console.log('Welcome screen search mode changed to:', currentSearchMode);
+                    
+                    // Handle Deep Search mode - disable other buttons
+                    if (currentSearchMode === 'deep') {
+                        welcomeSelectableBtns.forEach(b => {
+                            if (b.dataset.mode !== 'deep') {
+                                b.classList.add('disabled');
+                            }
+                        });
+                    }
+                });
+            });
+            
+            // Handle mode selection for chat screen
+            const chatSelectableBtns = document.querySelectorAll('#chat-screen .selectable-btn');
+            chatSelectableBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Don't allow clicking disabled buttons
+                    if (this.classList.contains('disabled')) {
+                        return;
+                    }
+                    
+                    // Remove selected and disabled classes from all buttons in chat screen
+                    chatSelectableBtns.forEach(b => {
+                        b.classList.remove('selected', 'disabled');
+                    });
+                    
+                    // Add selected class to clicked button
+                    this.classList.add('selected');
+                    
+                    // Update current search mode
+                    currentSearchMode = this.dataset.mode;
+                    console.log('Chat screen search mode changed to:', currentSearchMode);
+                    
+                    // Handle Deep Search mode - disable other buttons
+                    if (currentSearchMode === 'deep') {
+                        chatSelectableBtns.forEach(b => {
+                            if (b.dataset.mode !== 'deep') {
+                                b.classList.add('disabled');
+                            }
+                        });
+                    }
+                });
+            });
+            
             // Execute search (submit form) when Execute button is clicked on welcome screen
             const executeBtn = document.querySelector('.execute-btn');
             executeBtn.addEventListener('click', function() {
@@ -959,7 +1066,8 @@
                         body: JSON.stringify({
                             message: message,
                             chat_id: currentChatId,
-                            chat_history: chatHistory
+                            chat_history: chatHistory,
+                            search_mode: currentSearchMode
                         }),
                     });
                     
@@ -1025,12 +1133,169 @@
                                     
                                     if (data.type === 'chat_id') {
                                         currentChatId = data.chat_id;
+                                    } else if (data.type === 'reasoning_chunk') {
+                                        // Handle reasoning content chunks with enhanced visual indicators
+                                        if (!messageDiv.querySelector('.reasoning-section')) {
+                                            // Create reasoning section if it doesn't exist
+                                            const reasoningSection = document.createElement('div');
+                                            reasoningSection.className = 'reasoning-section';
+                                            reasoningSection.style.marginTop = '15px';
+                                            reasoningSection.style.padding = '16px';
+                                            reasoningSection.style.backgroundColor = '#1a1a2e';
+                                            reasoningSection.style.border = '1px solid #4a90e2';
+                                            reasoningSection.style.borderLeft = '4px solid #4a90e2';
+                                            reasoningSection.style.borderRadius = '8px';
+                                            reasoningSection.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.1)';
+                                            
+                                            const reasoningHeader = document.createElement('div');
+                                            reasoningHeader.className = 'reasoning-header';
+                                            reasoningHeader.style.fontWeight = 'bold';
+                                            reasoningHeader.style.color = '#4a90e2';
+                                            reasoningHeader.style.marginBottom = '12px';
+                                            reasoningHeader.style.fontSize = '16px';
+                                            reasoningHeader.style.display = 'flex';
+                                            reasoningHeader.style.alignItems = 'center';
+                                            reasoningHeader.style.gap = '8px';
+                                            
+                                            const thinkingIcon = document.createElement('span');
+                                            thinkingIcon.textContent = '🧠';
+                                            thinkingIcon.style.fontSize = '18px';
+                                            
+                                            const headerText = document.createElement('span');
+                                            headerText.textContent = 'AI Reasoning Process';
+                                            
+                                            const streamingIndicator = document.createElement('span');
+                                            streamingIndicator.className = 'streaming-indicator';
+                                            streamingIndicator.textContent = '●';
+                                            streamingIndicator.style.color = '#4a90e2';
+                                            streamingIndicator.style.animation = 'pulse 1.5s infinite';
+                                            streamingIndicator.style.marginLeft = 'auto';
+                                            
+                                            reasoningHeader.appendChild(thinkingIcon);
+                                            reasoningHeader.appendChild(headerText);
+                                            reasoningHeader.appendChild(streamingIndicator);
+                                            
+                                            const reasoningContent = document.createElement('div');
+                                            reasoningContent.className = 'reasoning-content';
+                                            reasoningContent.style.color = '#b8c5d6';
+                                            reasoningContent.style.fontSize = '14px';
+                                            reasoningContent.style.lineHeight = '1.5';
+                                            reasoningContent.style.whiteSpace = 'pre-wrap';
+                                            reasoningContent.style.fontFamily = 'Monaco, Consolas, "Courier New", monospace';
+                                            reasoningContent.style.background = '#0f0f1a';
+                                            reasoningContent.style.padding = '12px';
+                                            reasoningContent.style.borderRadius = '4px';
+                                            reasoningContent.style.border = '1px solid #2a2a3e';
+                                            reasoningContent.style.maxHeight = '300px';
+                                            reasoningContent.style.overflowY = 'auto';
+                                            
+                                            reasoningSection.appendChild(reasoningHeader);
+                                            reasoningSection.appendChild(reasoningContent);
+                                            messageDiv.appendChild(reasoningSection);
+                                            
+                                            // Add CSS animation for pulse effect
+                                            if (!document.querySelector('#reasoning-animations')) {
+                                                const style = document.createElement('style');
+                                                style.id = 'reasoning-animations';
+                                                style.textContent = `
+                                                    @keyframes pulse {
+                                                        0% { opacity: 1; }
+                                                        50% { opacity: 0.3; }
+                                                        100% { opacity: 1; }
+                                                    }
+                                                    .reasoning-chunk {
+                                                        background: linear-gradient(90deg, transparent, rgba(74, 144, 226, 0.1), transparent);
+                                                        animation: slideIn 0.3s ease-out;
+                                                    }
+                                                    @keyframes slideIn {
+                                                        from { opacity: 0; transform: translateX(-10px); }
+                                                        to { opacity: 1; transform: translateX(0); }
+                                                    }
+                                                `;
+                                                document.head.appendChild(style);
+                                            }
+                                        }
+                                        
+                                        const reasoningContentDiv = messageDiv.querySelector('.reasoning-content');
+                                        if (reasoningContentDiv) {
+                                            // Add the new reasoning chunk with visual effect
+                                            const chunkSpan = document.createElement('span');
+                                            chunkSpan.className = 'reasoning-chunk';
+                                            chunkSpan.textContent = data.reasoning_content;
+                                            chunkSpan.style.color = '#4a90e2';
+                                            reasoningContentDiv.appendChild(chunkSpan);
+                                            
+                                            // Scroll to bottom of reasoning content
+                                            reasoningContentDiv.scrollTop = reasoningContentDiv.scrollHeight;
+                                        }
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
                                     } else if (data.type === 'chunk') {
                                         accumulatedContent += data.content;
-                                        // For streaming, show plain text until complete
-                                        contentDiv.textContent = accumulatedContent;
+                                        
+                                        // Create answer section header if it doesn't exist
+                                        if (!messageDiv.querySelector('.answer-section')) {
+                                            const answerSection = document.createElement('div');
+                                            answerSection.className = 'answer-section';
+                                            answerSection.style.marginTop = '15px';
+                                            
+                                            const answerHeader = document.createElement('div');
+                                            answerHeader.className = 'answer-header';
+                                            answerHeader.style.fontWeight = 'bold';
+                                            answerHeader.style.color = '#4ade80';
+                                            answerHeader.style.marginBottom = '12px';
+                                            answerHeader.style.fontSize = '16px';
+                                            answerHeader.style.display = 'flex';
+                                            answerHeader.style.alignItems = 'center';
+                                            answerHeader.style.gap = '8px';
+                                            
+                                            const answerIcon = document.createElement('span');
+                                            answerIcon.textContent = '💬';
+                                            answerIcon.style.fontSize = '18px';
+                                            
+                                            const headerText = document.createElement('span');
+                                            headerText.textContent = 'AI Response';
+                                            
+                                            const streamingIndicator = document.createElement('span');
+                                            streamingIndicator.className = 'streaming-indicator answer-streaming';
+                                            streamingIndicator.textContent = '●';
+                                            streamingIndicator.style.color = '#4ade80';
+                                            streamingIndicator.style.animation = 'pulse 1.5s infinite';
+                                            streamingIndicator.style.marginLeft = 'auto';
+                                            
+                                            answerHeader.appendChild(answerIcon);
+                                            answerHeader.appendChild(headerText);
+                                            answerHeader.appendChild(streamingIndicator);
+                                            
+                                            answerSection.appendChild(answerHeader);
+                                            
+                                            // Move the existing content div into the answer section
+                                            answerSection.appendChild(contentDiv);
+                                            messageDiv.appendChild(answerSection);
+                                            
+                                            // Style the content div for streaming
+                                            contentDiv.style.padding = '12px';
+                                            contentDiv.style.backgroundColor = '#0a0a0f';
+                                            contentDiv.style.border = '1px solid #2a2a3e';
+                                            contentDiv.style.borderRadius = '4px';
+                                            contentDiv.style.minHeight = '40px';
+                                            contentDiv.style.fontFamily = 'inherit';
+                                            contentDiv.style.lineHeight = '1.6';
+                                        }
+                                        
+                                        // Add streaming chunk with visual effect
+                                        const chunkSpan = document.createElement('span');
+                                        chunkSpan.className = 'answer-chunk';
+                                        chunkSpan.textContent = data.content;
+                                        chunkSpan.style.color = '#4ade80';
+                                        chunkSpan.style.animation = 'slideIn 0.2s ease-out';
+                                        
+                                        contentDiv.appendChild(chunkSpan);
                                         chatMessages.scrollTop = chatMessages.scrollHeight;
                                     } else if (data.type === 'complete') {
+                                        // Remove streaming indicators
+                                        const streamingIndicators = messageDiv.querySelectorAll('.streaming-indicator');
+                                        streamingIndicators.forEach(indicator => indicator.remove());
+                                        
                                         // Format the complete content as Markdown
                                         if (data.formatted_content && data.formatted_content.formatted_content) {
                                             contentDiv.innerHTML = data.formatted_content.formatted_content;
@@ -1045,10 +1310,62 @@
                                             }
                                         }
                                         
-                                        // Highlight code blocks
+                                        // Format reasoning content if available
+                                        if (data.reasoning_content) {
+                                            const reasoningContentDiv = messageDiv.querySelector('.reasoning-content');
+                                            if (reasoningContentDiv) {
+                                                if (data.formatted_reasoning && data.formatted_reasoning.formatted_content) {
+                                                    reasoningContentDiv.innerHTML = data.formatted_reasoning.formatted_content;
+                                                } else {
+                                                    try {
+                                                        reasoningContentDiv.innerHTML = marked.parse(data.reasoning_content);
+                                                    } catch (e) {
+                                                        console.warn('Failed to parse reasoning markdown, using plain text:', e);
+                                                        reasoningContentDiv.textContent = data.reasoning_content;
+                                                    }
+                                                }
+                                                reasoningContentDiv.classList.add('formatted');
+                                                
+                                                // Highlight code blocks in reasoning
+                                                reasoningContentDiv.querySelectorAll('pre code').forEach((block) => {
+                                                    hljs.highlightElement(block);
+                                                });
+                                            }
+                                        }
+                                        
+                                        // Highlight code blocks in main content
                                         contentDiv.querySelectorAll('pre code').forEach((block) => {
                                             hljs.highlightElement(block);
                                         });
+                                        
+                                        // Add streaming statistics summary
+                                        const statsDiv = document.createElement('div');
+                                        statsDiv.className = 'streaming-stats';
+                                        statsDiv.style.marginTop = '15px';
+                                        statsDiv.style.padding = '12px';
+                                        statsDiv.style.backgroundColor = '#1a1a1a';
+                                        statsDiv.style.border = '1px solid #333';
+                                        statsDiv.style.borderRadius = '6px';
+                                        statsDiv.style.fontSize = '13px';
+                                        statsDiv.style.color = '#888';
+                                        
+                                        const reasoningLength = data.reasoning_length || (data.reasoning_content ? data.reasoning_content.length : 0);
+                                        const answerLength = data.answer_length || (data.content ? data.content.length : 0);
+                                        const totalLength = reasoningLength + answerLength;
+                                        const reasoningChunks = data.reasoning_chunks || 0;
+                                        const answerChunks = data.answer_chunks || 0;
+                                        
+                                        statsDiv.innerHTML = `
+                                            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                                                <span style="color: #4ade80; font-weight: bold;">✅ Live Streaming Complete</span>
+                                                ${reasoningLength > 0 ? `<span>🧠 Reasoning: ${reasoningChunks} chunks, ${reasoningLength} chars</span>` : ''}
+                                                <span>💬 Answer: ${answerChunks} chunks, ${answerLength} chars</span>
+                                                <span>📝 Total: ${totalLength} chars</span>
+                                                <span style="color: #4a90e2;">⚡ ${data.model || 'deepseek-reasoner'}</span>
+                                            </div>
+                                        `;
+                                        
+                                        messageDiv.appendChild(statsDiv);
                                         
                                         // Add search results if available
                                         if (data.search_results && data.search_results.length > 0) {
