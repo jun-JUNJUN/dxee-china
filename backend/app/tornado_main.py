@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 from meilisearch_python_sdk import AsyncClient
 from app.handler.search_handler import SearchHandler
 from app.handler.health_handler import HealthHandler
-from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler
-from app.handler.main_handler import MainHandler, NotFoundHandler
+from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler, ChatStreamHandler
+from app.handler.main_handler import MainHandler, NotFoundHandler, FaviconHandler
 from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler
 from app.service.deepseek_service import DeepSeekService
 from app.service.mongodb_service import MongoDBService
@@ -45,6 +45,7 @@ class Application(tornado.web.Application):
             (r"/search", SearchHandler),
             (r"/health", HealthHandler),
             (r"/chat/message", ChatMessageHandler),
+            (r"/chat/stream", ChatStreamHandler),
             (r"/chat/history/([^/]+)", ChatHistoryHandler),
             (r"/chat/user", UserChatsHandler),
             (r"/chat/share/([^/]+)", ShareMessageHandler),
@@ -56,6 +57,7 @@ class Application(tornado.web.Application):
             (r"/auth/microsoft", MicrosoftOAuthHandler),
             (r"/auth/apple", AppleOAuthHandler),
             (r"/auth/profile", UserProfileHandler),
+            (r"/favicon.ico", FaviconHandler),  # Favicon handler
             (r"/", MainHandler),  # Main page handler
         ]
         
@@ -99,6 +101,9 @@ class Application(tornado.web.Application):
         # Store queue references
         self.input_queue = input_queue
         self.output_queue = output_queue
+        
+        # Initialize stream queues for streaming responses
+        self.stream_queues = {}
 
 def make_app():
     """
@@ -126,12 +131,14 @@ def make_app():
 app = make_app()
 
 # Start the DeepSeek service processing loop
-async def start_deepseek_service():
+async def start_deepseek_service(app_instance=None):
     global deepseek_service
     if deepseek_service:
         logger.info("Starting DeepSeek service processing loop")
         try:
-            await deepseek_service.start_processing()
+            # Pass stream_queues if available from app instance
+            stream_queues = getattr(app_instance, 'stream_queues', None) if app_instance else None
+            await deepseek_service.start_processing(stream_queues)
         except Exception as e:
             logger.error(f"Error in DeepSeek service processing loop: {e}")
             logger.error(traceback.format_exc())
@@ -152,7 +159,7 @@ async def create_mongodb_indexes(app_instance):
 # Add the background tasks to the IOLoop
 def start_background_tasks(app_instance=None):
     logger.info("Starting background tasks")
-    asyncio.ensure_future(start_deepseek_service())
+    asyncio.ensure_future(start_deepseek_service(app_instance))
     if app_instance:
         asyncio.ensure_future(create_mongodb_indexes(app_instance))
 

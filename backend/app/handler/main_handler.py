@@ -13,6 +13,16 @@ class MainHandler(tornado.web.RequestHandler):
         logger.info("Serving main page")
         self.render("index.html")
 
+class FaviconHandler(tornado.web.RequestHandler):
+    """
+    Handler for favicon requests
+    """
+    def get(self):
+        # Return a 204 No Content response for favicon requests
+        # This prevents 404 errors in the logs
+        self.set_status(204)
+        self.finish()
+
 class NotFoundHandler(tornado.web.RequestHandler):
     """
     Handler for 404 errors

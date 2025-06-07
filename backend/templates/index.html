@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DeepSeek Chat</title>
+    <title>Dxee Chat</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -477,7 +477,7 @@
                     
                     const iconSpan = document.createElement('span');
                     iconSpan.className = 'message-icon ai-icon';
-                    iconSpan.textContent = '✺';
+                    iconSpan.textContent = '✨';
                     
                     const nameSpan = document.createElement('span');
                     nameSpan.textContent = 'AI';
@@ -575,7 +575,7 @@
                 
                 const iconSpan = document.createElement('span');
                 iconSpan.className = 'message-icon ai-icon';
-                iconSpan.textContent = '✺';
+                iconSpan.textContent = '✨';
                 
                 const nameSpan = document.createElement('span');
                 nameSpan.textContent = 'AI';
@@ -646,7 +646,7 @@
                 
                 const iconSpan = document.createElement('span');
                 iconSpan.className = 'message-icon ai-icon';
-                iconSpan.textContent = '✺';
+                iconSpan.textContent = '✨';
                 
                 const nameSpan = document.createElement('span');
                 nameSpan.textContent = 'AI';
@@ -669,41 +669,8 @@
                 messageInput.value = '';
                 messageInput.style.height = 'auto';
                 
-                // Process the search asynchronously
-                sendMessage(message, currentChatId).then(result => {
-                    if (result) {
-                        currentChatId = result.chat_id;
-                        
-                        // Remove loading indicator
-                        const loadingMessage = document.getElementById('loading-message');
-                        if (loadingMessage) {
-                            loadingMessage.remove();
-                        }
-                        
-                        // Display the search result
-                        displaySearchResult(result.response);
-                        
-                        // Scroll to the bottom
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
-                    }
-                }).catch(error => {
-                    console.error('Error processing search:', error);
-                    
-                    // Remove loading indicator
-                    const loadingMessage = document.getElementById('loading-message');
-                    if (loadingMessage) {
-                        loadingMessage.remove();
-                    }
-                    
-                    // Display error message
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'message ai-message error-message';
-                    errorDiv.textContent = 'Error processing your search. Please try again.';
-                    chatMessages.appendChild(errorDiv);
-                    
-                    // Scroll to the bottom
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                });
+                // Process the search with streaming
+                await displayStreamingResponse(message);
             });
             
             // Initialize the UI for the chat screen form
@@ -735,7 +702,7 @@
                 
                 const iconSpan = document.createElement('span');
                 iconSpan.className = 'message-icon ai-icon';
-                iconSpan.textContent = '✺';
+                iconSpan.textContent = '✨';
                 
                 const nameSpan = document.createElement('span');
                 nameSpan.textContent = 'AI';
@@ -758,41 +725,8 @@
                 chatInput.value = '';
                 chatInput.style.height = 'auto';
                 
-                // Process the search asynchronously
-                sendMessage(message, currentChatId).then(result => {
-                    if (result) {
-                        currentChatId = result.chat_id;
-                        
-                        // Remove loading indicator
-                        const loadingMessage = document.getElementById('loading-message');
-                        if (loadingMessage) {
-                            loadingMessage.remove();
-                        }
-                        
-                        // Display the search result
-                        displaySearchResult(result.response);
-                        
-                        // Scroll to the bottom
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
-                    }
-                }).catch(error => {
-                    console.error('Error processing search:', error);
-                    
-                    // Remove loading indicator
-                    const loadingMessage = document.getElementById('loading-message');
-                    if (loadingMessage) {
-                        loadingMessage.remove();
-                    }
-                    
-                    // Display error message
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'message ai-message error-message';
-                    errorDiv.textContent = 'Error processing your search. Please try again.';
-                    chatMessages.appendChild(errorDiv);
-                    
-                    // Scroll to the bottom
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                });
+                // Process the search with streaming
+                await displayStreamingResponse(message);
             });
             
             // Execute search (submit form) when Execute button is clicked on welcome screen
@@ -822,6 +756,203 @@
                     chatForm.requestSubmit();
                 }
             });
+            
+            // Function to get recent chat history from DOM (up to 2 previous exchanges)
+            function getRecentChatHistory(maxExchanges = 2) {
+                const messages = chatMessages.querySelectorAll('.message');
+                const history = [];
+                let exchangeCount = 0;
+                
+                // Go through messages in reverse order to get most recent first
+                for (let i = messages.length - 1; i >= 0 && exchangeCount < maxExchanges; i--) {
+                    const message = messages[i];
+                    
+                    // Skip loading messages
+                    if (message.id === 'loading-message') continue;
+                    
+                    const isUser = message.classList.contains('user-message');
+                    const isAI = message.classList.contains('ai-message');
+                    
+                    if (isUser || isAI) {
+                        const content = message.querySelector('.message-content');
+                        if (content && content.textContent.trim()) {
+                            history.unshift({
+                                type: isUser ? 'user' : 'assistant',
+                                content: content.textContent.trim()
+                            });
+                            
+                            // Count complete exchanges (user + assistant pairs)
+                            if (isUser && i > 0) {
+                                const prevMessage = messages[i - 1];
+                                if (prevMessage && prevMessage.classList.contains('ai-message')) {
+                                    exchangeCount++;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Ensure we have complete exchanges and limit to maxExchanges
+                const completeHistory = [];
+                let currentExchanges = 0;
+                
+                for (let i = 0; i < history.length - 1 && currentExchanges < maxExchanges; i += 2) {
+                    if (history[i].type === 'user' && history[i + 1].type === 'assistant') {
+                        completeHistory.push(history[i]);
+                        completeHistory.push(history[i + 1]);
+                        currentExchanges++;
+                    }
+                }
+                
+                return completeHistory;
+            }
+            
+            // Function to handle streaming response
+            async function displayStreamingResponse(message) {
+                try {
+                    // Get recent chat history from DOM
+                    const chatHistory = getRecentChatHistory(2);
+                    
+                    const response = await fetch('/chat/stream', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: message,
+                            chat_id: currentChatId,
+                            chat_history: chatHistory
+                        }),
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    
+                    // Create AI message container
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message ai-message';
+                    messageDiv.style.width = '845px';
+                    messageDiv.style.maxWidth = '90%';
+                    
+                    const headerDiv = document.createElement('div');
+                    headerDiv.className = 'message-header';
+                    
+                    const iconSpan = document.createElement('span');
+                    iconSpan.className = 'message-icon ai-icon';
+                    iconSpan.textContent = '✨';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = 'AI';
+                    
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'message-content';
+                    contentDiv.textContent = '';
+                    
+                    headerDiv.appendChild(iconSpan);
+                    headerDiv.appendChild(nameSpan);
+                    messageDiv.appendChild(headerDiv);
+                    messageDiv.appendChild(contentDiv);
+                    
+                    // Remove loading message and add streaming message
+                    const loadingMessage = document.getElementById('loading-message');
+                    if (loadingMessage) {
+                        loadingMessage.remove();
+                    }
+                    
+                    chatMessages.appendChild(messageDiv);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    
+                    let accumulatedContent = '';
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            break;
+                        }
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n');
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const jsonStr = line.slice(6).trim();
+                                    if (!jsonStr) continue; // Skip empty data lines
+                                    const data = JSON.parse(jsonStr);
+                                    
+                                    if (data.type === 'chat_id') {
+                                        currentChatId = data.chat_id;
+                                    } else if (data.type === 'chunk') {
+                                        accumulatedContent += data.content;
+                                        contentDiv.textContent = accumulatedContent;
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                                    } else if (data.type === 'complete') {
+                                        contentDiv.textContent = data.content;
+                                        
+                                        // Add search results if available
+                                        if (data.search_results && data.search_results.length > 0) {
+                                            const resultsDiv = document.createElement('div');
+                                            resultsDiv.className = 'search-results';
+                                            
+                                            data.search_results.forEach(result => {
+                                                const resultItem = document.createElement('div');
+                                                resultItem.className = 'result-item';
+                                                
+                                                const titleDiv = document.createElement('div');
+                                                titleDiv.className = 'result-title';
+                                                titleDiv.textContent = result.title || 'Untitled';
+                                                
+                                                const contentDiv = document.createElement('div');
+                                                contentDiv.className = 'result-content';
+                                                contentDiv.textContent = result.content || result.snippet || '';
+                                                
+                                                resultItem.appendChild(titleDiv);
+                                                resultItem.appendChild(contentDiv);
+                                                resultsDiv.appendChild(resultItem);
+                                            });
+                                            
+                                            messageDiv.appendChild(resultsDiv);
+                                        }
+                                        
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                                        break;
+                                    } else if (data.type === 'error') {
+                                        contentDiv.textContent = 'Error: ' + data.content;
+                                        contentDiv.className += ' error-message';
+                                        break;
+                                    } else if (data.type === 'heartbeat') {
+                                        // Just continue, heartbeat to keep connection alive
+                                        continue;
+                                    }
+                                } catch (e) {
+                                    console.error('Error parsing SSE data:', e);
+                                }
+                            }
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('Error in streaming response:', error);
+                    
+                    // Remove loading message
+                    const loadingMessage = document.getElementById('loading-message');
+                    if (loadingMessage) {
+                        loadingMessage.remove();
+                    }
+                    
+                    // Display error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'message ai-message error-message';
+                    errorDiv.textContent = 'Error: Unable to get response from the server. Please try again.';
+                    chatMessages.appendChild(errorDiv);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
         });
     </script>
 </body>
