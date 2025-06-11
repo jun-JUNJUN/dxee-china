@@ -10,7 +10,7 @@ from app.handler.search_handler import SearchHandler
 from app.handler.health_handler import HealthHandler
 from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler, ChatStreamHandler
 from app.handler.main_handler import MainHandler, NotFoundHandler, FaviconHandler
-from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler
+from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, GitHubOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler, SessionCheckHandler
 from app.service.deepseek_service import DeepSeekService
 from app.service.mongodb_service import MongoDBService
 
@@ -54,9 +54,13 @@ class Application(tornado.web.Application):
             (r"/auth/login", LoginHandler),
             (r"/auth/logout", LogoutHandler),
             (r"/auth/google", GoogleOAuthHandler),
+            (r"/auth/google/callback", GoogleOAuthHandler),
+            (r"/auth/github", GitHubOAuthHandler),
+            (r"/auth/github/callback", GitHubOAuthHandler),
             (r"/auth/microsoft", MicrosoftOAuthHandler),
             (r"/auth/apple", AppleOAuthHandler),
             (r"/auth/profile", UserProfileHandler),
+            (r"/auth/session", SessionCheckHandler),
             (r"/favicon.ico", FaviconHandler),  # Favicon handler
             (r"/", MainHandler),  # Main page handler
         ]
@@ -72,6 +76,11 @@ class Application(tornado.web.Application):
                 'client_id': os.environ.get('GOOGLE_CLIENT_ID', ''),
                 'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET', ''),
                 'redirect_uri': os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:8888/auth/google')
+            },
+            'github_oauth': {
+                'client_id': os.environ.get('GITHUB_CLIENT_ID', ''),
+                'client_secret': os.environ.get('GITHUB_CLIENT_SECRET', ''),
+                'redirect_uri': os.environ.get('GITHUB_REDIRECT_URI', 'http://localhost:8100/auth/github/callback')
             },
             'microsoft_oauth': {
                 'client_id': os.environ.get('MICROSOFT_CLIENT_ID', ''),

@@ -11,7 +11,8 @@ class MainHandler(tornado.web.RequestHandler):
     """
     def get(self):
         logger.info("Serving main page")
-        self.render("index.html")
+        google_client_id = self.application.settings.get('google_oauth', {}).get('client_id', '')
+        self.render("index.html", google_client_id=google_client_id)
 
 class FaviconHandler(tornado.web.RequestHandler):
     """
