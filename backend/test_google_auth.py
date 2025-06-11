@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 def test_google_auth_config():
     """Test Google OAuth configuration"""
-    print("? Testing Google OAuth Configuration...")
+    print("🔍 Testing Google OAuth Configuration...")
     print("=" * 50)
     
     # Load environment variables
@@ -20,13 +20,13 @@ def test_google_auth_config():
     google_redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI')
     port = os.environ.get('PORT', '8100')
     
-    print(f"? Configuration Check:")
+    print(f"📋 Configuration Check:")
     print(f"   PORT: {port}")
-    print(f"   GOOGLE_CLIENT_ID: {'? Set' if google_client_id else '? Missing'}")
-    print(f"   GOOGLE_CLIENT_SECRET: {'? Set' if google_client_secret else '? Missing'}")
-    print(f"   GOOGLE_REDIRECT_URI: {google_redirect_uri or '? Missing'}")
+    print(f"   GOOGLE_CLIENT_ID: {'✅ Set' if google_client_id else '❌ Missing'}")
+    print(f"   GOOGLE_CLIENT_SECRET: {'✅ Set' if google_client_secret else '❌ Missing'}")
+    print(f"   GOOGLE_REDIRECT_URI: {google_redirect_uri or '❌ Missing'}")
     
-    print(f"\n? Expected Configuration:")
+    print(f"\n🌐 Expected Configuration:")
     print(f"   Server should run on: http://localhost:{port}")
     print(f"   Google Auth Platform should have:")
     print(f"   - Authorized JavaScript origins: http://localhost:{port}")
@@ -42,8 +42,8 @@ def test_google_auth_config():
         missing_vars.append('GOOGLE_REDIRECT_URI')
     
     if missing_vars:
-        print(f"\n? Missing environment variables: {', '.join(missing_vars)}")
-        print(f"\n? To fix this, update your .env file with:")
+        print(f"\n❌ Missing environment variables: {', '.join(missing_vars)}")
+        print(f"\n📝 To fix this, update your .env file with:")
         for var in missing_vars:
             if var == 'GOOGLE_CLIENT_ID':
                 print(f"   {var}=your_google_client_id_here")
@@ -53,9 +53,9 @@ def test_google_auth_config():
                 print(f"   {var}=http://localhost:{port}/auth/google/callback")
         return False
     else:
-        print(f"\n? All environment variables are set!")
-        print(f"\n? Ready to test Google OAuth!")
-        print(f"\n? Next steps:")
+        print(f"\n✅ All environment variables are set!")
+        print(f"\n🚀 Ready to test Google OAuth!")
+        print(f"\n📋 Next steps:")
         print(f"   1. Make sure your Google Auth Platform is configured correctly")
         print(f"   2. Start the server: python backend/app/tornado_main.py")
         print(f"   3. Open browser: http://localhost:{port}")

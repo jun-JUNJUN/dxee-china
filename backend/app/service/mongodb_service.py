@@ -1,6 +1,8 @@
 import os
 import logging
 import motor.motor_tornado
+import hashlib
+import uuid
 from datetime import datetime
 from bson import ObjectId
 
@@ -24,6 +26,56 @@ class MongoDBService:
         self._messages = None
         
         logger.info(f"MongoDB service configured with URI: {self.mongodb_uri}")
+    
+    def _mask_email(self, email):
+        """
+        Mask email address for privacy
+        Example: john.doe@example.com -> j***doe@exa***.com
+        Pattern: first char + *** + last 3 chars of local @ first 3 chars + *** + domain extension
+        """
+        if not email or '@' not in email:
+            return email
+        
+        local, domain = email.split('@', 1)
+        
+        # Handle domain parts (separate main domain from extension)
+        domain_parts = domain.split('.')
+        if len(domain_parts) < 2:
+            return email  # Invalid email format
+        
+        main_domain = domain_parts[0]
+        domain_extension = '.'.join(domain_parts[1:])  # .com, .co.uk, etc.
+        
+        # Mask local part: first char + *** + last 3 chars
+        if len(local) <= 4:
+            # For short local parts, just show first char + ***
+            masked_local = local[0] + '***'
+        else:
+            # Show first char + *** + last 3 chars
+            masked_local = local[0] + '***' + local[-3:]
+        
+        # Mask domain: first 3 chars + *** + extension
+        if len(main_domain) <= 3:
+            # For short domains, just show first char + ***
+            masked_domain = main_domain[0] + '***'
+        else:
+            # Show first 3 chars + ***
+            masked_domain = main_domain[:3] + '***'
+        
+        return f"{masked_local}@{masked_domain}.{domain_extension}"
+    
+    def _generate_email_hash(self, email, auth_type):
+        """
+        Generate a unique hash for email + auth_type combination
+        """
+        combined = f"{email.lower()}:{auth_type}"
+        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+    
+    def _generate_user_uid(self):
+        """
+        Generate a unique user identifier
+        """
+        return str(uuid.uuid4())
     
     def _ensure_client(self):
         """
@@ -81,9 +133,24 @@ class MongoDBService:
         Create necessary indexes for the collections
         """
         try:
-            # Create indexes for users collection
-            await self.users.create_index("email", unique=True)
+            # Drop existing indexes and clear users collection
+            try:
+                await self.users.drop_index("email_1")
+                logger.info("Dropped existing unique email index")
+            except Exception:
+                pass  # Index might not exist
+            
+            # Clear existing users to avoid conflicts with new schema
+            result = await self.users.delete_many({})
+            logger.info(f"Cleared {result.deleted_count} existing users for schema update")
+            
+            # Create indexes for users collection with new schema
+            await self.users.create_index("user_uid", unique=True)  # Unique user identifier
+            await self.users.create_index("email_hash", unique=True)  # Unique hash for email+auth_type
+            await self.users.create_index("email_masked")  # Index for masked email lookups
             await self.users.create_index("username")
+            await self.users.create_index("auth_type")
+            await self.users.create_index([("email_masked", 1), ("auth_type", 1)])  # Compound index
             
             # Create indexes for chats collection
             await self.chats.create_index("user_id")
@@ -94,7 +161,7 @@ class MongoDBService:
             await self.messages.create_index([("user_id", 1), ("chat_id", 1)])
             await self.messages.create_index("shared", sparse=True)
             
-            logger.info("MongoDB indexes created successfully")
+            logger.info("MongoDB indexes created successfully with new privacy-focused schema")
         except Exception as e:
             logger.error(f"Error creating MongoDB indexes: {e}")
             raise
@@ -103,12 +170,27 @@ class MongoDBService:
     
     async def create_user(self, user_data):
         """
-        Create a new user
+        Create a new user with privacy-focused schema
         """
         try:
+            # Generate unique identifiers
+            user_data["user_uid"] = self._generate_user_uid()
+            
+            # Handle email masking and hashing
+            if "email" in user_data:
+                email = user_data["email"]
+                auth_type = user_data.get("auth_type", "email")
+                
+                # Store masked email instead of real email
+                user_data["email_masked"] = self._mask_email(email)
+                user_data["email_hash"] = self._generate_email_hash(email, auth_type)
+                
+                # Remove the original email for privacy
+                del user_data["email"]
+            
             user_data["created_at"] = datetime.utcnow()
             result = await self.users.insert_one(user_data)
-            logger.info(f"User created with ID: {result.inserted_id}")
+            logger.info(f"User created with ID: {result.inserted_id}, UID: {user_data['user_uid']}")
             return result.inserted_id
         except Exception as e:
             logger.error(f"Error creating user: {e}")
@@ -125,15 +207,60 @@ class MongoDBService:
             logger.error(f"Error getting user by ID: {e}")
             raise
     
-    async def get_user_by_email(self, email):
+    async def get_user_by_email(self, email, auth_type=None):
         """
-        Get a user by email
+        Get a user by email (using email hash for privacy)
         """
         try:
-            user = await self.users.find_one({"email": email})
+            if auth_type:
+                # Find by specific auth_type
+                email_hash = self._generate_email_hash(email, auth_type)
+                user = await self.users.find_one({"email_hash": email_hash})
+            else:
+                # Find any user with this email (first match)
+                email_masked = self._mask_email(email)
+                user = await self.users.find_one({"email_masked": email_masked})
             return user
         except Exception as e:
             logger.error(f"Error getting user by email: {e}")
+            raise
+    
+    async def get_user_by_email_and_auth_type(self, email, auth_type):
+        """
+        Get a user by email and auth_type using email hash
+        """
+        try:
+            email_hash = self._generate_email_hash(email, auth_type)
+            user = await self.users.find_one({"email_hash": email_hash})
+            return user
+        except Exception as e:
+            logger.error(f"Error getting user by email and auth_type: {e}")
+            raise
+    
+    async def get_users_by_email_masked(self, email):
+        """
+        Get all users with the same masked email (different auth_types)
+        """
+        try:
+            email_masked = self._mask_email(email)
+            cursor = self.users.find({"email_masked": email_masked})
+            users = []
+            async for user in cursor:
+                users.append(user)
+            return users
+        except Exception as e:
+            logger.error(f"Error getting users by masked email: {e}")
+            raise
+    
+    async def get_user_by_uid(self, user_uid):
+        """
+        Get a user by unique user identifier
+        """
+        try:
+            user = await self.users.find_one({"user_uid": user_uid})
+            return user
+        except Exception as e:
+            logger.error(f"Error getting user by UID: {e}")
             raise
     
     async def update_user(self, user_id, update_data):

@@ -33,6 +33,8 @@
             flex: 1;
             display: flex;
             flex-direction: column;
+            margin-left: 100px;
+            transition: margin-left 0.3s cubic-bezier(0.4,0,0.2,1);
         }
         
         .welcome-container {
@@ -249,7 +251,7 @@
             background: #333;
             border-color: #00bcd4;
         }
-        .search-btn, .deep-btn, .doubao-btn {
+        .search-btn, .deep-btn, .qwen-btn {
             padding: 6px 14px;
             border-radius: 16px;
             border: 1px solid #fff;
@@ -263,22 +265,22 @@
         .search-btn {
             border-color: #00bcd4;
         }
-        .search-btn:hover, .deep-btn:hover, .doubao-btn:hover {
+        .search-btn:hover, .deep-btn:hover, .qwen-btn:hover {
             background: #333;
             border-color: #00bcd4;
         }
-        .search-btn.selected, .deep-btn.selected, .doubao-btn.selected {
+        .search-btn.selected, .deep-btn.selected, .qwen-btn.selected {
             background: #00bcd4;
             color: #fff;
             border-color: #00bcd4;
         }
-        .search-btn.disabled, .deep-btn.disabled, .doubao-btn.disabled {
+        .search-btn.disabled, .deep-btn.disabled, .qwen-btn.disabled {
             opacity: 0.5;
             cursor: not-allowed;
             background: #232526;
             border-color: #666;
         }
-        .search-btn.disabled:hover, .deep-btn.disabled:hover, .doubao-btn.disabled:hover {
+        .search-btn.disabled:hover, .deep-btn.disabled:hover, .qwen-btn.disabled:hover {
             background: #232526;
             border-color: #666;
         }
@@ -415,9 +417,224 @@
         .message-content.formatted > *:last-child {
             margin-bottom: 0;
         }
+        
+        .qwen-btn {
+            padding: 6px 14px;
+            border-radius: 16px;
+            border: 1px solid #fff;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: #232526;
+            color: #fff;
+            transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+        }
+        
+        .qwen-btn:hover {
+            background: #333;
+            border-color: #00bcd4;
+        }
+        
+        .qwen-btn.selected {
+            background: #00bcd4;
+            color: #fff;
+            border-color: #00bcd4;
+        }
+        
+        .qwen-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #232526;
+            border-color: #666;
+        }
+        
+        .qwen-btn.disabled:hover {
+            background: #232526;
+            border-color: #666;
+        }
+        /* Floating Auth Panels */
+        .auth-panel {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 2000;
+            width: 340px;
+            background: #232526;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+            border: 1px solid #444;
+            padding: 32px 24px 24px 24px;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            color: #e0e0e0;
+        }
+        .auth-panel.active {
+            display: flex;
+        }
+        .auth-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 18px;
+            color: #fff;
+        }
+        .auth-google-btn {
+            width: 100%;
+            margin-bottom: 18px;
+            display: flex;
+            justify-content: center;
+        }
+        .auth-switch-link {
+            color: #00bcd4;
+            cursor: pointer;
+            text-decoration: underline;
+            font-size: 0.95em;
+            margin-top: 8px;
+        }
+        .auth-separator {
+            width: 100%;
+            border-bottom: 1px solid #444;
+            margin: 18px 0 12px 0;
+        }
+        .auth-provider-btn {
+            background: #181a1b;
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 1em;
+            font-weight: 500;
+            padding: 10px 0;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .auth-provider-btn:not(.disabled):hover {
+            background: #333;
+            border-color: #00bcd4;
+        }
+        .auth-provider-btn.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        /* Sidebar styles */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            height: 100vh;
+            width: 100px;
+            background: #181a1b;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: width 0.3s cubic-bezier(0.4,0,0.2,1);
+            z-index: 2001;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.08);
+        }
+        .sidebar.closed {
+            width: 40px;
+        }
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 10px 8px 0 8px;
+        }
+        .sidebar-toggle-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            outline: none;
+        }
+        .sidebar-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .sidebar-footer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-bottom: 20px;
+        }
+        .personal-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #232526;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            border: 1px solid #333;
+        }
+        .personal-panel {
+            position: fixed;
+            left: 110px;
+            bottom: 30px;
+            background: #232526;
+            color: #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            padding: 18px 24px 12px 24px;
+            min-width: 160px;
+            display: none;
+            z-index: 2100;
+            border: 1px solid #444;
+        }
+        .personal-panel.open {
+            display: block;
+        }
+        .logout-btn {
+            background: #dc3545;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .logout-btn:hover {
+            background: #b52a37;
+        }
+        /* Adjust main container for sidebar */
+        .sidebar.closed ~ .container {
+            margin-left: 40px;
+        }
+        @media (max-width: 600px) {
+            .sidebar { width: 60px; }
+            .sidebar.closed { width: 32px; }
+            .container { margin-left: 60px; }
+            .sidebar.closed ~ .container { margin-left: 32px; }
+        }
     </style>
 </head>
 <body>
+    <div class="sidebar" id="sidebar">
+        <div>
+            <div class="sidebar-header">
+                <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Close sidebar">&#x25C0;</button>
+            </div>
+            <div class="sidebar-content">
+                <!-- You can add navigation icons here if needed -->
+            </div>
+        </div>
+        <div class="sidebar-footer">
+            <div class="personal-icon" id="personalIcon" title="Personal panel">
+                <span>&#128100;</span>
+            </div>
+        </div>
+    </div>
+    <div class="personal-panel" id="personalPanel">
+        <div style="font-weight: bold; margin-bottom: 8px;">Personal Panel</div>
+        <div id="personalSessionInfo" style="margin-bottom: 12px; font-size: 0.98em; color: #b8c5d6;"></div>
+        <button class="logout-btn" id="logoutBtn">Logout</button>
+    </div>
     <div class="container">
         <div id="welcome-screen" class="welcome-container">
             <div class="search-frame">
@@ -427,7 +644,7 @@
                         <div class="left-buttons">
                             <button type="button" class="search-btn selectable-btn" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
-                            <button type="button" class="doubao-btn selectable-btn" data-mode="doubao">Doubao Search</button>
+                            <button type="button" class="qwen-btn selectable-btn" data-mode="qwen">Qwen Search</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn">Execute</button>
@@ -449,7 +666,7 @@
                         <div class="left-buttons">
                             <button type="button" class="search-btn selectable-btn selected" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
-                            <button type="button" class="doubao-btn selectable-btn" data-mode="doubao">Doubao Search</button>
+                            <button type="button" class="qwen-btn selectable-btn" data-mode="qwen">Qwen Search</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn" id="chat-execute-btn">Execute</button>
@@ -460,6 +677,40 @@
         </div>
     </div>
 
+    <!-- Floating Login Panel -->
+    <div id="login-panel" class="auth-panel">
+        <div class="auth-title">Sign in to Dxee Chat</div>
+        <div class="auth-google-btn">
+            <div id="google-login-btn"></div>
+        </div>
+        <button class="auth-provider-btn" id="github-login-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; margin-top: 12px;">
+            <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" alt="GitHub" style="width: 22px; height: 22px;"> Sign in with GitHub
+        </button>
+        <div class="auth-separator"></div>
+        <div>Don't have an account? <span class="auth-switch-link" id="to-register-link">Register</span></div>
+    </div>
+    <!-- Floating Registration Panel -->
+    <div id="register-panel" class="auth-panel">
+        <div class="auth-title">Register for Dxee Chat</div>
+        <div style="width: 100%; display: flex; flex-direction: column; gap: 14px; align-items: center;">
+            <button class="auth-provider-btn" id="google-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center;">
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google" style="width: 22px; height: 22px;"> Register with Google
+            </button>
+            <button class="auth-provider-btn" id="github-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center;">
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" alt="GitHub" style="width: 22px; height: 22px;"> Register with GitHub
+            </button>
+            <button class="auth-provider-btn disabled" id="microsoft-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; opacity: 0.6; cursor: not-allowed;" disabled>
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/microsoft/microsoft-original.svg" alt="Microsoft" style="width: 22px; height: 22px;"> Register with Microsoft
+            </button>
+            <button class="auth-provider-btn disabled" id="apple-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; opacity: 0.6; cursor: not-allowed;" disabled>
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/apple/apple-original.svg" alt="Apple" style="width: 22px; height: 22px;"> Register with Apple
+            </button>
+        </div>
+        <div class="auth-separator"></div>
+        <div>Already have an account? <span class="auth-switch-link" id="to-login-link">Login</span></div>
+    </div>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const welcomeScreen = document.getElementById('welcome-screen');
@@ -561,11 +812,11 @@
                 deepBtn.dataset.mode = 'deep';
                 deepBtn.textContent = 'Deep Search';
                 
-                const doubaoBtn = document.createElement('button');
-                doubaoBtn.type = 'button';
-                doubaoBtn.className = 'doubao-btn selectable-btn';
-                doubaoBtn.dataset.mode = 'doubao';
-                doubaoBtn.textContent = 'Doubao Search';
+                const qwenBtn = document.createElement('button');
+                qwenBtn.type = 'button';
+                qwenBtn.className = 'qwen-btn selectable-btn';
+                qwenBtn.dataset.mode = 'qwen';
+                qwenBtn.textContent = 'Qwen Search';
                 
                 const rightButton = document.createElement('div');
                 rightButton.className = 'right-button';
@@ -577,7 +828,7 @@
                 
                 leftButtons.appendChild(searchBtn);
                 leftButtons.appendChild(deepBtn);
-                leftButtons.appendChild(doubaoBtn);
+                leftButtons.appendChild(qwenBtn);
                 
                 rightButton.appendChild(executeBtn);
                 
@@ -1426,6 +1677,300 @@
                     chatMessages.scrollTop = chatMessages.scrollHeight;
                 }
             }
+            // --- Auth Panel Logic ---
+            const loginPanel = document.getElementById('login-panel');
+            const registerPanel = document.getElementById('register-panel');
+            const toRegisterLink = document.getElementById('to-register-link');
+            const toLoginLink = document.getElementById('to-login-link');
+
+            // Track login state
+            let isLoggedIn = false;
+            let currentUser = null;
+            const personalSessionInfo = document.getElementById('personalSessionInfo');
+
+            function showLoginPanel() {
+                loginPanel.classList.add('active');
+                registerPanel.classList.remove('active');
+            }
+            function showRegisterPanel() {
+                registerPanel.classList.add('active');
+                loginPanel.classList.remove('active');
+            }
+            function hideAuthPanels() {
+                loginPanel.classList.remove('active');
+                registerPanel.classList.remove('active');
+            }
+
+            function updatePersonalPanel(user) {
+                if (!personalSessionInfo) return;
+                if (user) {
+                    personalSessionInfo.innerHTML = `
+                        <div><strong>Email:</strong> ${user.email_masked || 'N/A'}</div>
+                        <div><strong>UID:</strong> ${user.user_uid || 'N/A'}</div>
+                        <div><strong>Auth:</strong> ${user.auth_type || 'N/A'}</div>
+                    `;
+                } else {
+                    personalSessionInfo.innerHTML = '<div style="color:#888;">Not logged in</div>';
+                }
+            }
+
+            // Function to check login status
+            async function checkLoginStatus() {
+                try {
+                    console.log('🔍 Checking login status...');
+                    const response = await fetch('/auth/session');
+                    const data = await response.json();
+                    console.log('📊 Session response:', data);
+                    
+                    if (data.logged_in && data.user) {
+                        isLoggedIn = true;
+                        currentUser = data.user;
+                        hideAuthPanels();
+                        updatePersonalPanel(currentUser);
+                        console.log('✅ User is logged in:', currentUser);
+                        
+                        // Show a success message or update UI
+                        const welcomeMessage = document.querySelector('.welcome-message');
+                        if (welcomeMessage) {
+                            welcomeMessage.innerHTML = `<span class="welcome-icon">👋</span>Welcome back, ${currentUser.username || currentUser.email_masked}!`;
+                        }
+                        
+                    } else {
+                        isLoggedIn = false;
+                        currentUser = null;
+                        updatePersonalPanel(null);
+                        showLoginPanel();
+                        console.log('❌ User is not logged in');
+                    }
+                } catch (error) {
+                    console.error('❌ Error checking login status:', error);
+                    isLoggedIn = false;
+                    currentUser = null;
+                    updatePersonalPanel(null);
+                    showLoginPanel();
+                }
+            }
+
+            // Check login status on page load
+            checkLoginStatus();
+            
+            // Check if we just came back from OAuth (detect URL changes or page reload after auth)
+            window.addEventListener('focus', function() {
+                // Re-check login status when window regains focus (after OAuth popup/redirect)
+                setTimeout(checkLoginStatus, 500);
+            });
+            
+            // Check for OAuth callback in URL and recheck session
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('code') || urlParams.has('auth') || window.location.pathname.includes('/auth/')) {
+                console.log('🔄 OAuth callback detected, rechecking session...');
+                // We might have just completed OAuth, recheck session after a short delay
+                setTimeout(checkLoginStatus, 1000);
+                setTimeout(checkLoginStatus, 3000); // Double check after 3 seconds
+                
+                // Clean up the URL by removing auth parameters
+                if (urlParams.has('auth') && urlParams.get('auth') === 'success') {
+                    const newUrl = window.location.pathname;
+                    window.history.replaceState({}, document.title, newUrl);
+                }
+            }
+            
+            // Also check session periodically to catch any auth state changes
+            setInterval(checkLoginStatus, 30000); // Check every 30 seconds
+            
+            toRegisterLink.addEventListener('click', showRegisterPanel);
+            toLoginLink.addEventListener('click', showLoginPanel);
+
+            // --- Google Sign-In Integration ---
+            function handleGoogleCredentialResponse(response) {
+                // response.credential is the ID token
+                fetch('/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        id_token: response.credential,
+                        redirect_uri: 'http://localhost:8100/auth/google/callback'
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        isLoggedIn = true;
+                        currentUser = data.user;
+                        hideAuthPanels();
+                        console.log('Google authentication successful:', currentUser);
+                        
+                        // Store user info in localStorage
+                        if (data.user) {
+                            localStorage.setItem('user', JSON.stringify(data.user));
+                        }
+                        
+                        // Update UI immediately without reload
+                        checkLoginStatus();
+                    } else {
+                        alert('Google authentication failed: ' + (data.message || 'Unknown error'));
+                    }
+                })
+                .catch(err => {
+                    console.error('Google authentication error:', err);
+                    alert('Google authentication error: ' + err);
+                });
+            }
+
+            // Render Google Sign-In button for login
+            window.onload = function() {
+                if (window.google && google.accounts && google.accounts.id) {
+                    google.accounts.id.initialize({
+                        client_id: '{{ google_client_id }}', // Will be replaced with actual client ID from backend
+                        callback: handleGoogleCredentialResponse,
+                        auto_select: false,
+                        cancel_on_tap_outside: true,
+                        context: 'signin'
+                    });
+                    
+                    // Login panel
+                    google.accounts.id.renderButton(
+                        document.getElementById('google-login-btn'),
+                        { 
+                            theme: 'outline', 
+                            size: 'large', 
+                            width: 260, 
+                            text: 'signin_with',
+                            type: 'standard'
+                        }
+                    );
+                    
+                    // Registration panel
+                    google.accounts.id.renderButton(
+                        document.getElementById('google-register-btn'),
+                        { 
+                            theme: 'outline', 
+                            size: 'large', 
+                            width: 260, 
+                            text: 'signup_with',
+                            type: 'standard'
+                        }
+                    );
+                }
+            };
+
+            // GitHub OAuth handlers
+            function handleGitHubAuth() {
+                // Redirect to GitHub OAuth
+                window.location.href = '/auth/github';
+            }
+
+            // GitHub login button
+            const githubLoginBtn = document.getElementById('github-login-btn');
+            if (githubLoginBtn) {
+                githubLoginBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    handleGitHubAuth();
+                });
+            }
+
+            // GitHub register button
+            const githubRegisterBtn = document.getElementById('github-register-btn');
+            if (githubRegisterBtn) {
+                githubRegisterBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    handleGitHubAuth();
+                });
+            }
+
+            // If user clicks the custom Google button in registration panel, trigger the Google sign-in
+            const customGoogleRegisterBtn = document.getElementById('google-register-btn');
+            if (customGoogleRegisterBtn) {
+                customGoogleRegisterBtn.addEventListener('click', function(e) {
+                    // Prevent default if using Google button
+                    e.preventDefault();
+                    // The real Google button will be rendered inside this button
+                });
+            }
+            // If user clicks the custom Google button in login panel, trigger the Google sign-in
+            const customGoogleLoginBtn = document.getElementById('google-login-btn');
+            if (customGoogleLoginBtn) {
+                customGoogleLoginBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                });
+            }
+
+            // Sidebar open/close logic
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+            let sidebarOpen = true;
+            function updateSidebar() {
+                if (sidebarOpen) {
+                    sidebar.classList.remove('closed');
+                    sidebarToggleBtn.innerHTML = '&#x25C0;';
+                    sidebarToggleBtn.title = 'Close sidebar';
+                } else {
+                    sidebar.classList.add('closed');
+                    sidebarToggleBtn.innerHTML = '&#x25B6;';
+                    sidebarToggleBtn.title = 'Open sidebar';
+                }
+            }
+            sidebarToggleBtn.addEventListener('click', () => {
+                sidebarOpen = !sidebarOpen;
+                updateSidebar();
+            });
+            // Initial state
+            updateSidebar();
+
+            // Personal panel logic
+            const personalIcon = document.getElementById('personalIcon');
+            const personalPanel = document.getElementById('personalPanel');
+            let personalPanelOpen = false;
+            personalIcon.addEventListener('click', (e) => {
+                personalPanelOpen = !personalPanelOpen;
+                if (personalPanelOpen) {
+                    personalPanel.classList.add('open');
+                } else {
+                    personalPanel.classList.remove('open');
+                }
+            });
+            // Hide personal panel when clicking outside
+            document.addEventListener('mousedown', (e) => {
+                if (personalPanelOpen && !personalPanel.contains(e.target) && !personalIcon.contains(e.target)) {
+                    personalPanel.classList.remove('open');
+                    personalPanelOpen = false;
+                }
+            });
+            // Logout button
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                try {
+                    console.log('🚪 Logging out...');
+                    const response = await fetch('/auth/logout', { method: 'GET', credentials: 'include' });
+                    const data = await response.json();
+                    console.log('📤 Logout response:', data);
+                    
+                    if (data.success) {
+                        // Clear user state and show login panel
+                        isLoggedIn = false;
+                        currentUser = null;
+                        updatePersonalPanel(null);
+                        // Clear localStorage
+                        localStorage.removeItem('user');
+                        // Reset welcome message
+                        const welcomeMessage = document.querySelector('.welcome-message');
+                        if (welcomeMessage) {
+                            welcomeMessage.innerHTML = '<span class="welcome-icon">🔍</span>Welcome to Dxee Chat';
+                        }
+                        showLoginPanel();
+                        personalPanel.classList.remove('open');
+                        personalPanelOpen = false;
+                        // Recheck login status to ensure UI is updated
+                        setTimeout(checkLoginStatus, 500);
+                        console.log('✅ Logout successful');
+                    } else {
+                        console.error('❌ Logout failed:', data);
+                        alert('Logout failed: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (e) {
+                    console.error('❌ Logout error:', e);
+                    alert('Logout failed: ' + e.message);
+                }
+            });
         });
     </script>
 </body>

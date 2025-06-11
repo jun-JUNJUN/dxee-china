@@ -85,10 +85,10 @@ class RegisterHandler(BaseAuthHandler):
                 self.write({'error': 'Email and password are required'})
                 return
             
-            # Check if user already exists
-            existing_user = await self.application.mongodb.get_user_by_email(email)
+            # Check if user already exists with email auth
+            existing_user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'email')
             if existing_user:
-                logger.warning(f"User with email {email} already exists")
+                logger.warning(f"User with email {email} and email auth already exists")
                 self.set_status(409)
                 self.write({'error': 'User with this email already exists'})
                 return
@@ -98,11 +98,10 @@ class RegisterHandler(BaseAuthHandler):
             
             # Create user document
             user_doc = {
-                'email': email,
+                'email': email,  # Will be masked and hashed in create_user
                 'username': username,
                 'password': hashed_password.decode('utf-8'),
-                'auth_type': 'email',
-                'created_at': datetime.utcnow()
+                'auth_type': 'email'
             }
             
             # Store the user in MongoDB
@@ -156,10 +155,10 @@ class LoginHandler(BaseAuthHandler):
                 self.write({'error': 'Email and password are required'})
                 return
             
-            # Get user from MongoDB
-            user = await self.application.mongodb.get_user_by_email(email)
+            # Get user from MongoDB with email auth
+            user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'email')
             if not user:
-                logger.warning(f"User with email {email} not found")
+                logger.warning(f"User with email {email} and email auth not found")
                 self.set_status(401)
                 self.write({'error': 'Invalid email or password'})
                 return
@@ -196,9 +195,23 @@ class LogoutHandler(BaseAuthHandler):
     """
     Handler for user logout
     """
-    def get(self):
-        self.set_current_user(None)
-        self.write({'success': True})
+    async def get(self):
+        try:
+            # Clear the secure cookie
+            self.set_current_user(None)
+            
+            # Also clear any other cookies that might be set
+            self.clear_cookie("user_id")
+            
+            # Clear all cookies by setting them to expire
+            for cookie_name in self.request.cookies:
+                self.clear_cookie(cookie_name)
+            
+            logger.info("User logged out successfully")
+            self.write({'success': True, 'message': 'Logged out successfully'})
+        except Exception as e:
+            logger.error(f"Error during logout: {e}")
+            self.write({'success': False, 'error': 'Logout failed'})
 
 class GoogleOAuthHandler(BaseAuthHandler, GoogleOAuth2Mixin):
     """
@@ -220,25 +233,24 @@ class GoogleOAuthHandler(BaseAuthHandler, GoogleOAuth2Mixin):
                     access_token=access["access_token"]
                 )
                 
-                # Check if user exists
+                # Check if user exists with Google auth
                 email = user_info.get('email')
-                existing_user = await self.application.mongodb.get_user_by_email(email)
+                existing_user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'google')
                 
                 if existing_user:
-                    # Update existing user
+                    # Update existing Google user
                     user_id = str(existing_user.get('_id'))
                     await self.application.mongodb.update_user(user_id, {
                         'last_login': datetime.utcnow(),
                         'google_id': user_info.get('id')
                     })
                 else:
-                    # Create new user
+                    # Create new Google user
                     user_doc = {
-                        'email': email,
+                        'email': email,  # Will be masked and hashed in create_user
                         'username': user_info.get('name'),
                         'google_id': user_info.get('id'),
                         'auth_type': 'google',
-                        'created_at': datetime.utcnow(),
                         'last_login': datetime.utcnow()
                     }
                     user_id = await self.application.mongodb.create_user(user_doc)
@@ -305,32 +317,31 @@ class GoogleOAuthHandler(BaseAuthHandler, GoogleOAuth2Mixin):
                 self.write({'error': 'Invalid token audience'})
                 return
             
-            # Check if user exists
+            # Check if user exists with Google auth
             email = user_info.get('email')
-            existing_user = await self.application.mongodb.get_user_by_email(email)
+            existing_user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'google')
             
             if existing_user:
-                # Update existing user
+                # Update existing Google user
                 user_id = str(existing_user.get('_id'))
                 await self.application.mongodb.update_user(user_id, {
                     'last_login': datetime.utcnow(),
                     'google_id': user_info.get('sub')
                 })
-                user_data = existing_user
+                # Get updated user data
+                user_data = await self.application.mongodb.get_user_by_id(user_id)
             else:
-                # Create new user
+                # Create new Google user
                 user_doc = {
-                    'email': email,
+                    'email': email,  # Will be masked and hashed in create_user
                     'username': user_info.get('name'),
                     'google_id': user_info.get('sub'),
                     'auth_type': 'google',
-                    'created_at': datetime.utcnow(),
                     'last_login': datetime.utcnow()
                 }
                 user_id = await self.application.mongodb.create_user(user_doc)
                 user_id = str(user_id)
-                user_data = user_doc
-                user_data['_id'] = user_id
+                user_data = await self.application.mongodb.get_user_by_id(user_id)
             
             # Set the current user
             self.set_current_user(user_id)
@@ -343,12 +354,13 @@ class GoogleOAuthHandler(BaseAuthHandler, GoogleOAuth2Mixin):
                 'success': True,
                 'user_id': user_id,
                 'username': user_data.get('username'),
-                'email': user_data.get('email'),
+                'email_masked': user_data.get('email_masked'),
                 'token': token,
                 'user': {
                     'id': user_id,
                     'username': user_data.get('username'),
-                    'email': user_data.get('email'),
+                    'email_masked': user_data.get('email_masked'),
+                    'user_uid': user_data.get('user_uid'),
                     'auth_type': 'google'
                 }
             })
@@ -432,25 +444,24 @@ class MicrosoftOAuthHandler(BaseAuthHandler, OAuth2Mixin):
                 
                 user_info = json.loads(user_info_response.body)
                 
-                # Check if user exists
+                # Check if user exists with Microsoft auth
                 email = user_info.get('mail') or user_info.get('userPrincipalName')
-                existing_user = await self.application.mongodb.get_user_by_email(email)
+                existing_user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'microsoft')
                 
                 if existing_user:
-                    # Update existing user
+                    # Update existing Microsoft user
                     user_id = str(existing_user.get('_id'))
                     await self.application.mongodb.update_user(user_id, {
                         'last_login': datetime.utcnow(),
                         'microsoft_id': user_info.get('id')
                     })
                 else:
-                    # Create new user
+                    # Create new Microsoft user
                     user_doc = {
-                        'email': email,
+                        'email': email,  # Will be masked and hashed in create_user
                         'username': user_info.get('displayName'),
                         'microsoft_id': user_info.get('id'),
                         'auth_type': 'microsoft',
-                        'created_at': datetime.utcnow(),
                         'last_login': datetime.utcnow()
                     }
                     user_id = await self.application.mongodb.create_user(user_doc)
@@ -553,11 +564,11 @@ class GitHubOAuthHandler(BaseAuthHandler, OAuth2Mixin):
                     self.write({'error': 'Could not get email from GitHub account'})
                     return
                 
-                # Check if user exists
-                existing_user = await self.application.mongodb.get_user_by_email(primary_email)
+                # Check if user exists with GitHub auth
+                existing_user = await self.application.mongodb.get_user_by_email_and_auth_type(primary_email, 'github')
                 
                 if existing_user:
-                    # Update existing user
+                    # Update existing GitHub user
                     user_id = str(existing_user.get('_id'))
                     await self.application.mongodb.update_user(user_id, {
                         'last_login': datetime.utcnow(),
@@ -565,14 +576,13 @@ class GitHubOAuthHandler(BaseAuthHandler, OAuth2Mixin):
                         'github_username': user_info.get('login')
                     })
                 else:
-                    # Create new user
+                    # Create new GitHub user
                     user_doc = {
-                        'email': primary_email,
+                        'email': primary_email,  # Will be masked and hashed in create_user
                         'username': user_info.get('login') or user_info.get('name') or primary_email.split('@')[0],
                         'github_id': user_info.get('id'),
                         'github_username': user_info.get('login'),
                         'auth_type': 'github',
-                        'created_at': datetime.utcnow(),
                         'last_login': datetime.utcnow()
                     }
                     user_id = await self.application.mongodb.create_user(user_doc)
@@ -685,33 +695,32 @@ class GitHubOAuthHandler(BaseAuthHandler, OAuth2Mixin):
                 self.write({'error': 'Could not get email from GitHub account'})
                 return
             
-            # Check if user exists
-            existing_user = await self.application.mongodb.get_user_by_email(primary_email)
+            # Check if user exists with GitHub auth
+            existing_user = await self.application.mongodb.get_user_by_email_and_auth_type(primary_email, 'github')
             
             if existing_user:
-                # Update existing user
+                # Update existing GitHub user
                 user_id = str(existing_user.get('_id'))
                 await self.application.mongodb.update_user(user_id, {
                     'last_login': datetime.utcnow(),
                     'github_id': user_info.get('id'),
                     'github_username': user_info.get('login')
                 })
-                user_data = existing_user
+                # Get updated user data
+                user_data = await self.application.mongodb.get_user_by_id(user_id)
             else:
-                # Create new user
+                # Create new GitHub user
                 user_doc = {
-                    'email': primary_email,
+                    'email': primary_email,  # Will be masked and hashed in create_user
                     'username': user_info.get('login') or user_info.get('name') or primary_email.split('@')[0],
                     'github_id': user_info.get('id'),
                     'github_username': user_info.get('login'),
                     'auth_type': 'github',
-                    'created_at': datetime.utcnow(),
                     'last_login': datetime.utcnow()
                 }
                 user_id = await self.application.mongodb.create_user(user_doc)
                 user_id = str(user_id)
-                user_data = user_doc
-                user_data['_id'] = user_id
+                user_data = await self.application.mongodb.get_user_by_id(user_id)
             
             # Set the current user
             self.set_current_user(user_id)
@@ -724,12 +733,13 @@ class GitHubOAuthHandler(BaseAuthHandler, OAuth2Mixin):
                 'success': True,
                 'user_id': user_id,
                 'username': user_data.get('username'),
-                'email': user_data.get('email'),
+                'email_masked': user_data.get('email_masked'),
                 'token': token,
                 'user': {
                     'id': user_id,
                     'username': user_data.get('username'),
-                    'email': user_data.get('email'),
+                    'email_masked': user_data.get('email_masked'),
+                    'user_uid': user_data.get('user_uid'),
                     'auth_type': 'github'
                 }
             })

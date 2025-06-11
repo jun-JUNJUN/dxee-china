@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 async def test_login_session():
     """Test login session functionality"""
-    print("? Testing Login Session...")
+    print("🔍 Testing Login Session...")
     print("=" * 50)
     
     # Load environment variables

@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 async def debug_session_handler():
     """Debug session handler"""
-    print("? Debugging Session Handler...")
+    print("🔍 Debugging Session Handler...")
     print("=" * 50)
     
     # Load environment variables
@@ -29,12 +29,12 @@ async def debug_session_handler():
         response = session.get(base_url)
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
-            print("   ? Server is running")
+            print("   ✅ Server is running")
         else:
-            print("   ? Server might not be running")
+            print("   ❌ Server might not be running")
             return
     except Exception as e:
-        print(f"   ? Error accessing server: {e}")
+        print(f"   ❌ Error accessing server: {e}")
         return
     
     print("\n3. Testing session check endpoint...")

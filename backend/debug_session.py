@@ -12,7 +12,7 @@ import tornado.ioloop
 
 async def debug_session():
     """Debug session functionality"""
-    print("? Debugging Session...")
+    print("🔍 Debugging Session...")
     print("=" * 50)
     
     # Load environment variables
@@ -43,15 +43,15 @@ async def debug_session():
         user = await mongodb.get_user_by_id(known_user_id)
         
         if user:
-            print(f"   ? User found in database:")
+            print(f"   ✅ User found in database:")
             print(f"      ID: {user['_id']}")
             print(f"      Email: {user['email']}")
             print(f"      Username: {user['username']}")
         else:
-            print(f"   ? User not found in database")
+            print(f"   ❌ User not found in database")
             
     except Exception as e:
-        print(f"   ? Error connecting to MongoDB: {e}")
+        print(f"   ❌ Error connecting to MongoDB: {e}")
         import traceback
         traceback.print_exc()
     
@@ -91,7 +91,7 @@ async def debug_session():
         print(f"   Response: {response.json()}")
         
     except Exception as e:
-        print(f"   ? Error creating manual cookie: {e}")
+        print(f"   ❌ Error creating manual cookie: {e}")
         import traceback
         traceback.print_exc()
 
