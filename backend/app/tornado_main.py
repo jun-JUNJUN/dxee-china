@@ -11,6 +11,8 @@ from app.handler.health_handler import HealthHandler
 from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler, ChatStreamHandler
 from app.handler.main_handler import MainHandler, NotFoundHandler, FaviconHandler
 from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, GitHubOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler, SessionCheckHandler
+from app.handler.deep_search_handler import DeepSearchHandler, DeepSearchStreamHandler, DeepSearchWebSocketHandler
+from app.handler.dual_research_handler import DualResearchHandler, DualResearchWebSocketHandler
 from app.service.deepseek_service import DeepSeekService
 from app.service.mongodb_service import MongoDBService
 
@@ -50,6 +52,11 @@ class Application(tornado.web.Application):
             (r"/chat/user", UserChatsHandler),
             (r"/chat/share/([^/]+)", ShareMessageHandler),
             (r"/chat/shared", SharedMessagesHandler),
+            (r"/deep-search", DeepSearchHandler),
+            (r"/deep-search/stream", DeepSearchStreamHandler),
+            (r"/deep-search/ws", DeepSearchWebSocketHandler),
+            (r"/dual-research", DualResearchHandler),
+            (r"/dual-research/ws", DualResearchWebSocketHandler),
             (r"/auth/register", RegisterHandler),
             (r"/auth/login", LoginHandler),
             (r"/auth/logout", LogoutHandler),
