@@ -644,7 +644,7 @@
                         <div class="left-buttons">
                             <button type="button" class="search-btn selectable-btn" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
-                            <button type="button" class="qwen-btn selectable-btn" data-mode="qwen">Qwen Search</button>
+                            <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn">Execute</button>
@@ -666,7 +666,7 @@
                         <div class="left-buttons">
                             <button type="button" class="search-btn selectable-btn selected" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
-                            <button type="button" class="qwen-btn selectable-btn" data-mode="qwen">Qwen Search</button>
+                            <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn" id="chat-execute-btn">Execute</button>
@@ -815,8 +815,8 @@
                 const qwenBtn = document.createElement('button');
                 qwenBtn.type = 'button';
                 qwenBtn.className = 'qwen-btn selectable-btn';
-                qwenBtn.dataset.mode = 'qwen';
-                qwenBtn.textContent = 'Qwen Search';
+                qwenBtn.dataset.mode = 'googleweb';
+                qwenBtn.textContent = 'Google Deep';
                 
                 const rightButton = document.createElement('div');
                 rightButton.className = 'right-button';
@@ -1101,8 +1101,14 @@
                 messageInput.value = '';
                 messageInput.style.height = 'auto';
                 
-                // Process the search with streaming
-                await displayStreamingResponse(message);
+                // Process the search - check if dual research mode
+                if (currentSearchMode === 'googleweb') {
+                    console.log('Using dual research mode for welcome screen');
+                    await handleDualResearch(message);
+                } else {
+                    // Process the search with streaming
+                    await displayStreamingResponse(message);
+                }
             });
             
             // Initialize the UI for the chat screen form
@@ -1157,8 +1163,14 @@
                 chatInput.value = '';
                 chatInput.style.height = 'auto';
                 
-                // Process the search with streaming
-                await displayStreamingResponse(message);
+                // Process the search - check if dual research mode
+                if (currentSearchMode === 'googleweb') {
+                    console.log('Using dual research mode for chat screen');
+                    await handleDualResearch(message);
+                } else {
+                    // Process the search with streaming
+                    await displayStreamingResponse(message);
+                }
             });
             
             // Handle mode selection for welcome screen
@@ -1971,6 +1983,562 @@
                     alert('Logout failed: ' + e.message);
                 }
             });
+
+            // Dual Research functionality for Google Deep button
+            let isDualResearching = false;
+
+            // Handle Google Deep with Dual Research
+            async function handleDualResearch(message) {
+                if (isDualResearching) return;
+                
+                isDualResearching = true;
+                console.log('🔍 Starting Dual Research for:', message);
+                
+                // Show dual research progress
+                addDualResearchProgress();
+                
+                try {
+                    // Make HTTP request to dual research endpoint
+                    const response = await fetch('/dual-research', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            question: message
+                        }),
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const results = await response.json();
+                    
+                    if (results.status === 'success') {
+                        displayDualResearchResults(results);
+                    } else {
+                        showDualResearchError(results.message || 'Unknown error');
+                    }
+                    
+                } catch (error) {
+                    console.error('Dual research error:', error);
+                    showDualResearchError('Failed to conduct dual research: ' + error.message);
+                } finally {
+                    isDualResearching = false;
+                }
+            }
+
+            function addDualResearchProgress() {
+                // Remove loading message and add progress indicator
+                const loadingMessage = document.getElementById('loading-message');
+                if (loadingMessage) {
+                    const progressDiv = document.createElement('div');
+                    progressDiv.className = 'dual-research-progress';
+                    progressDiv.id = 'dual-research-progress';
+                    progressDiv.style.marginTop = '15px';
+                    progressDiv.style.padding = '20px';
+                    progressDiv.style.backgroundColor = '#1a1a2e';
+                    progressDiv.style.border = '1px solid #4a90e2';
+                    progressDiv.style.borderLeft = '4px solid #4a90e2';
+                    progressDiv.style.borderRadius = '8px';
+                    progressDiv.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.1)';
+                    
+                    progressDiv.innerHTML = `
+                        <div style="font-weight: bold; color: #4a90e2; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                            <span>🔍</span>
+                            <span>Dual Research in Progress</span>
+                            <span style="margin-left: auto; animation: pulse 1.5s infinite;">●</span>
+                        </div>
+                        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                            <div style="flex: 1; padding: 10px; background: #2a2a3e; border-radius: 6px; border-left: 3px solid #4ade80;">
+                                <div style="font-weight: bold; color: #4ade80; margin-bottom: 5px;">🧠 Intelligent Research</div>
+                                <div style="font-size: 12px; color: #b8c5d6;">Analyzes if web search is needed first</div>
+                            </div>
+                            <div style="flex: 1; padding: 10px; background: #2a2a3e; border-radius: 6px; border-left: 3px solid #ff9776;">
+                                <div style="font-weight: bold; color: #ff9776; margin-bottom: 5px;">⚡ Legacy Research</div>
+                                <div style="font-size: 12px; color: #b8c5d6;">Always performs comprehensive web search</div>
+                            </div>
+                        </div>
+                        <div style="text-align: center; color: #888; font-size: 14px;">
+                            Running both research approaches simultaneously...
+                        </div>
+                    `;
+                    
+                    loadingMessage.parentNode.replaceChild(progressDiv, loadingMessage);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
+
+            function displayDualResearchResults(results) {
+                // Remove progress indicator
+                const progressDiv = document.getElementById('dual-research-progress');
+                if (progressDiv) {
+                    progressDiv.remove();
+                }
+                
+                // Create dual results display
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message ai-message';
+                messageDiv.style.width = '845px';
+                messageDiv.style.maxWidth = '90%';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '🔍';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'Dual Research Results';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                messageDiv.appendChild(headerDiv);
+                messageDiv.appendChild(contentDiv);
+                
+                // Create side-by-side results layout
+                const resultsContainer = document.createElement('div');
+                resultsContainer.style.display = 'flex';
+                resultsContainer.style.gap = '20px';
+                resultsContainer.style.marginTop = '15px';
+                
+                // Intelligent Research Result
+                const intelligentDiv = createResearchResultDiv(results.intelligent_research, 'Intelligent Research', '#4ade80', '🧠');
+                
+                // Legacy Research Result  
+                const legacyDiv = createResearchResultDiv(results.legacy_research, 'Legacy Research', '#ff9776', '⚡');
+                
+                resultsContainer.appendChild(intelligentDiv);
+                resultsContainer.appendChild(legacyDiv);
+                contentDiv.appendChild(resultsContainer);
+                
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            function createResearchResultDiv(research, title, color, icon) {
+                const div = document.createElement('div');
+                div.style.flex = '1';
+                div.style.padding = '15px';
+                div.style.backgroundColor = '#1a1a2e';
+                div.style.border = `1px solid ${color}`;
+                div.style.borderLeft = `4px solid ${color}`;
+                div.style.borderRadius = '8px';
+                div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.style.fontWeight = 'bold';
+                headerDiv.style.color = color;
+                headerDiv.style.marginBottom = '12px';
+                headerDiv.style.fontSize = '16px';
+                headerDiv.style.display = 'flex';
+                headerDiv.style.alignItems = 'center';
+                headerDiv.style.gap = '8px';
+                headerDiv.innerHTML = `<span>${icon}</span><span>${title}</span>`;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.style.color = '#e0e0e0';
+                contentDiv.style.fontSize = '14px';
+                contentDiv.style.lineHeight = '1.5';
+                
+                if (research.approach === 'direct_answer') {
+                    // Direct answer without web search
+                    const answerDiv = document.createElement('div');
+                    answerDiv.style.background = '#0a0a0f';
+                    answerDiv.style.padding = '12px';
+                    answerDiv.style.borderRadius = '4px';
+                    answerDiv.style.border = '1px solid #2a2a3e';
+                    answerDiv.style.marginBottom = '10px';
+                    
+                    const answerLabel = document.createElement('div');
+                    answerLabel.style.fontWeight = 'bold';
+                    answerLabel.style.color = color;
+                    answerLabel.style.marginBottom = '8px';
+                    answerLabel.textContent = '🎯 Direct Answer';
+                    
+                    const answerText = document.createElement('div');
+                    answerText.textContent = research.direct_answer || 'No direct answer available';
+                    
+                    answerDiv.appendChild(answerLabel);
+                    answerDiv.appendChild(answerText);
+                    contentDiv.appendChild(answerDiv);
+                } else if (research.approach === 'web_search_research' || research.approach === 'legacy_web_search') {
+                    // Web search results
+                    if (research.steps && research.steps.step2 && research.steps.step2.search_results) {
+                        const searchHeader = document.createElement('div');
+                        searchHeader.style.fontWeight = 'bold';
+                        searchHeader.style.color = color;
+                        searchHeader.style.marginBottom = '8px';
+                        searchHeader.textContent = '🔍 Search Results';
+                        contentDiv.appendChild(searchHeader);
+                        
+                        const resultsDiv = document.createElement('div');
+                        resultsDiv.style.maxHeight = '200px';
+                        resultsDiv.style.overflowY = 'auto';
+                        
+                        research.steps.step2.search_results.slice(0, 3).forEach(result => {
+                            const resultItem = document.createElement('div');
+                            resultItem.style.marginBottom = '10px';
+                            resultItem.style.padding = '8px';
+                            resultItem.style.background = '#0a0a0f';
+                            resultItem.style.borderRadius = '4px';
+                            resultItem.style.border = '1px solid #2a2a3e';
+                            
+                            const titleDiv = document.createElement('div');
+                            titleDiv.style.fontWeight = 'bold';
+                            titleDiv.style.color = '#1a73e8';
+                            titleDiv.style.marginBottom = '3px';
+                            titleDiv.style.fontSize = '12px';
+                            titleDiv.textContent = result.title;
+                            
+                            const snippetDiv = document.createElement('div');
+                            snippetDiv.style.fontSize = '11px';
+                            snippetDiv.style.color = '#b8c5d6';
+                            snippetDiv.style.lineHeight = '1.3';
+                            snippetDiv.textContent = result.snippet.substring(0, 100) + '...';
+                            
+                            resultItem.appendChild(titleDiv);
+                            resultItem.appendChild(snippetDiv);
+                            resultsDiv.appendChild(resultItem);
+                        });
+                        
+                        contentDiv.appendChild(resultsDiv);
+                    }
+                    
+                    // AI Analysis
+                    if (research.steps && research.steps.step4 && research.steps.step4.analysis) {
+                        const analysisHeader = document.createElement('div');
+                        analysisHeader.style.fontWeight = 'bold';
+                        analysisHeader.style.color = color;
+                        analysisHeader.style.marginTop = '12px';
+                        analysisHeader.style.marginBottom = '8px';
+                        analysisHeader.textContent = '🧠 AI Analysis';
+                        contentDiv.appendChild(analysisHeader);
+                        
+                        const analysisDiv = document.createElement('div');
+                        analysisDiv.style.background = '#0a0a0f';
+                        analysisDiv.style.padding = '10px';
+                        analysisDiv.style.borderRadius = '4px';
+                        analysisDiv.style.border = '1px solid #2a2a3e';
+                        analysisDiv.style.maxHeight = '150px';
+                        analysisDiv.style.overflowY = 'auto';
+                        analysisDiv.style.fontSize = '12px';
+                        
+                        const analysisText = research.steps.step4.analysis.analysis_content || 'No analysis available';
+                        analysisDiv.textContent = analysisText.substring(0, 500) + (analysisText.length > 500 ? '...' : '');
+                        
+                        contentDiv.appendChild(analysisDiv);
+                    }
+                }
+                
+                // Research stats
+                const statsDiv = document.createElement('div');
+                statsDiv.style.marginTop = '10px';
+                statsDiv.style.padding = '8px';
+                statsDiv.style.background = '#2a2a3e';
+                statsDiv.style.borderRadius = '4px';
+                statsDiv.style.fontSize = '11px';
+                statsDiv.style.color = '#888';
+                
+                const researchType = research.research_type || 'unknown';
+                const approach = research.approach || 'unknown';
+                statsDiv.innerHTML = `
+                    <div>Type: ${researchType}</div>
+                    <div>Approach: ${approach}</div>
+                    <div>Success: ${research.success ? '✅' : '❌'}</div>
+                `;
+                
+                contentDiv.appendChild(statsDiv);
+                
+                div.appendChild(headerDiv);
+                div.appendChild(contentDiv);
+                return div;
+            }
+
+            function showDualResearchError(message) {
+                const progressDiv = document.getElementById('dual-research-progress');
+                if (progressDiv) {
+                    progressDiv.remove();
+                }
+                
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'message ai-message error-message';
+                errorDiv.style.width = '845px';
+                errorDiv.style.maxWidth = '90%';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '❌';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'Dual Research Error';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.textContent = message;
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                errorDiv.appendChild(headerDiv);
+                errorDiv.appendChild(contentDiv);
+                
+                chatMessages.appendChild(errorDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function updateDeepSearchProgress_OLD(step, data) {
+                const progressDiv = document.getElementById('deep-search-progress');
+                if (!progressDiv) return;
+                
+                function updateProgressStep(stepId, status) {
+                    const stepElement = document.getElementById(stepId);
+                    if (!stepElement) return;
+                    
+                    const icon = stepElement.querySelector('.step-icon');
+                    
+                    // Remove all status classes
+                    stepElement.classList.remove('active', 'completed', 'error');
+                    icon.classList.remove('pending', 'active', 'completed', 'error');
+                    
+                    // Add new status
+                    stepElement.classList.add(status);
+                    icon.classList.add(status);
+                    
+                    // Update styles and icon content
+                    if (status === 'active') {
+                        stepElement.style.background = '#e8f0fe';
+                        stepElement.style.borderLeft = '3px solid #4a90e2';
+                        icon.style.background = '#4a90e2';
+                        icon.style.color = 'white';
+                        icon.style.animation = 'pulse 1.5s infinite';
+                    } else if (status === 'completed') {
+                        stepElement.style.background = '#d4edda';
+                        stepElement.style.borderLeft = '3px solid #28a745';
+                        icon.style.background = '#28a745';
+                        icon.style.color = 'white';
+                        icon.style.animation = 'none';
+                        icon.textContent = '✓';
+                    } else if (status === 'error') {
+                        stepElement.style.background = '#f8d7da';
+                        stepElement.style.borderLeft = '3px solid #dc3545';
+                        icon.style.background = '#dc3545';
+                        icon.style.color = 'white';
+                        icon.style.animation = 'none';
+                        icon.textContent = '✗';
+                    }
+                }
+                
+                switch(step) {
+                    case 'step0_start':
+                        updateProgressStep('step0', 'active');
+                        break;
+                    case 'step0_complete':
+                        updateProgressStep('step0', 'completed');
+                        if (data.web_search_needed) {
+                            updateProgressStep('step1', 'active');
+                        }
+                        break;
+                    case 'step2_start':
+                        updateProgressStep('step1', 'completed');
+                        updateProgressStep('step2', 'active');
+                        break;
+                    case 'step2_complete':
+                        updateProgressStep('step2', 'completed');
+                        updateProgressStep('step3', 'active');
+                        break;
+                    case 'step3_complete':
+                        updateProgressStep('step3', 'completed');
+                        break;
+                    case 'step4_complete':
+                        updateProgressStep('step3', 'completed');
+                        break;
+                }
+                
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function handleDeepSearchComplete(results) {
+                resetDeepSearchState();
+                displayDeepSearchResults(results);
+            }
+
+            function displayDeepSearchResults(results) {
+                // Remove progress indicator
+                const progressDiv = document.getElementById('deep-search-progress');
+                if (progressDiv) {
+                    progressDiv.remove();
+                }
+                
+                // Create results display
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message ai-message';
+                messageDiv.style.width = '845px';
+                messageDiv.style.maxWidth = '90%';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '🔍';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'Google Deep Search';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                messageDiv.appendChild(headerDiv);
+                messageDiv.appendChild(contentDiv);
+                
+                if (results.research_type === 'direct_answer') {
+                    // Direct answer without web search
+                    const answerDiv = document.createElement('div');
+                    answerDiv.style.background = 'linear-gradient(135deg, #e3f2fd, #f3e5f5)';
+                    answerDiv.style.border = '1px solid #4a90e2';
+                    answerDiv.style.borderRadius = '8px';
+                    answerDiv.style.padding = '20px';
+                    answerDiv.style.marginTop = '15px';
+                    
+                    const answerHeader = document.createElement('h4');
+                    answerHeader.style.color = '#4a90e2';
+                    answerHeader.style.marginTop = '0';
+                    answerHeader.textContent = '🎯 Direct Answer';
+                    
+                    const answerContent = document.createElement('div');
+                    answerContent.style.lineHeight = '1.6';
+                    answerContent.style.color = '#424242';
+                    answerContent.textContent = results.direct_answer;
+                    
+                    answerDiv.appendChild(answerHeader);
+                    answerDiv.appendChild(answerContent);
+                    contentDiv.appendChild(answerDiv);
+                } else {
+                    // Web search results
+                    if (results.steps.step2 && results.steps.step2.search_results) {
+                        const searchHeader = document.createElement('h4');
+                        searchHeader.textContent = '🔍 Search Results';
+                        searchHeader.style.color = '#4a90e2';
+                        contentDiv.appendChild(searchHeader);
+                        
+                        results.steps.step2.search_results.forEach(result => {
+                            const resultItem = document.createElement('div');
+                            resultItem.style.marginBottom = '15px';
+                            resultItem.style.padding = '15px';
+                            resultItem.style.background = '#1a1a2e';
+                            resultItem.style.borderRadius = '6px';
+                            resultItem.style.borderLeft = '3px solid #4a90e2';
+                            
+                            const titleDiv = document.createElement('div');
+                            titleDiv.style.fontWeight = 'bold';
+                            titleDiv.style.color = '#1a73e8';
+                            titleDiv.style.marginBottom = '5px';
+                            titleDiv.textContent = result.title;
+                            
+                            const urlDiv = document.createElement('div');
+                            urlDiv.style.fontSize = '12px';
+                            urlDiv.style.color = '#5f6368';
+                            urlDiv.style.marginBottom = '8px';
+                            urlDiv.textContent = result.link;
+                            
+                            const snippetDiv = document.createElement('div');
+                            snippetDiv.style.color = '#3c4043';
+                            snippetDiv.style.lineHeight = '1.4';
+                            snippetDiv.style.fontSize = '14px';
+                            snippetDiv.textContent = result.snippet;
+                            
+                            resultItem.appendChild(titleDiv);
+                            resultItem.appendChild(urlDiv);
+                            resultItem.appendChild(snippetDiv);
+                            contentDiv.appendChild(resultItem);
+                        });
+                    }
+                    
+                    // AI Analysis
+                    if (results.steps.step4 && results.steps.step4.analysis) {
+                        const analysisHeader = document.createElement('h4');
+                        analysisHeader.textContent = '🧠 AI Analysis';
+                        analysisHeader.style.color = '#4ade80';
+                        analysisHeader.style.marginTop = '20px';
+                        contentDiv.appendChild(analysisHeader);
+                        
+                        const analysisContent = document.createElement('div');
+                        analysisContent.style.background = '#0a0a0f';
+                        analysisContent.style.padding = '15px';
+                        analysisContent.style.borderRadius = '6px';
+                        analysisContent.style.lineHeight = '1.6';
+                        analysisContent.style.color = '#e0e0e0';
+                        analysisContent.style.border = '1px solid #2a2a3e';
+                        
+                        try {
+                            analysisContent.innerHTML = marked.parse(results.steps.step4.analysis.analysis_content);
+                        } catch (e) {
+                            analysisContent.textContent = results.steps.step4.analysis.analysis_content;
+                        }
+                        
+                        contentDiv.appendChild(analysisContent);
+                    }
+                }
+                
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function showDeepSearchError(message) {
+                const progressDiv = document.getElementById('deep-search-progress');
+                if (progressDiv) {
+                    progressDiv.remove();
+                }
+                
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'message ai-message error-message';
+                errorDiv.style.width = '845px';
+                errorDiv.style.maxWidth = '90%';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '❌';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'Deep Search Error';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.textContent = message;
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                errorDiv.appendChild(headerDiv);
+                errorDiv.appendChild(contentDiv);
+                
+                chatMessages.appendChild(errorDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                resetDeepSearchState();
+            }
+
+            function resetDeepSearchState() {
+                isDeepSearching = false;
+                if (currentWebSocket) {
+                    currentWebSocket.close();
+                    currentWebSocket = null;
+                }
+            }
+
+            // Note: Dual research is now handled directly in form submission logic above
         });
     </script>
 </body>

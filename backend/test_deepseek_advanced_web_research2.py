@@ -61,32 +61,32 @@ load_dotenv()
 
 class WebContentExtractor:
     """Service for extracting content from web pages"""
-
+    
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
-
+    
     async def extract_article_content(self, url: str) -> Dict[str, Any]:
         """
         Extract article content from a URL using multiple methods
-
+        
         Args:
             url: URL to extract content from
-
+            
         Returns:
             Dictionary with extracted content, title, and metadata
         """
         try:
             logger.info(f"Extracting content from: {url}")
-
+            
             # Method 1: Try newspaper3k first (best for articles)
             try:
                 article = Article(url)
                 article.download()
                 article.parse()
-
+                
                 if article.text and len(article.text.strip()) > 100:
                     return {
                         'url': url,
@@ -98,21 +98,21 @@ class WebContentExtractor:
                     }
             except Exception as e:
                 logger.warning(f"Newspaper3k failed for {url}: {e}")
-
+            
             # Method 2: Try readability + BeautifulSoup
             try:
                 response = self.session.get(url, timeout=10)
                 response.raise_for_status()
-
+                
                 # Use readability to extract main content
                 doc = Document(response.text)
                 soup = BeautifulSoup(doc.content(), 'html.parser')
-
+                
                 # Extract text content
                 content = soup.get_text(separator=' ', strip=True)
                 title = doc.title() or soup.find('title')
                 title = title.get_text() if hasattr(title, 'get_text') else str(title) if title else 'No title'
-
+                
                 if content and len(content.strip()) > 100:
                     return {
                         'url': url,
@@ -124,40 +124,40 @@ class WebContentExtractor:
                     }
             except Exception as e:
                 logger.warning(f"Readability method failed for {url}: {e}")
-
+            
             # Method 3: Basic BeautifulSoup fallback
             try:
                 response = self.session.get(url, timeout=10)
                 response.raise_for_status()
-
+                
                 soup = BeautifulSoup(response.text, 'html.parser')
-
+                
                 # Remove script and style elements
                 for script in soup(["script", "style"]):
                     script.decompose()
-
+                
                 # Try to find main content areas
                 content_selectors = [
-                    'article', 'main', '.content', '.article-content',
+                    'article', 'main', '.content', '.article-content', 
                     '.post-content', '.entry-content', '#content'
                 ]
-
+                
                 content = ""
                 for selector in content_selectors:
                     elements = soup.select(selector)
                     if elements:
                         content = ' '.join([elem.get_text(separator=' ', strip=True) for elem in elements])
                         break
-
+                
                 # If no specific content area found, get body text
                 if not content:
                     body = soup.find('body')
                     if body:
                         content = body.get_text(separator=' ', strip=True)
-
+                
                 title = soup.find('title')
                 title = title.get_text() if title else 'No title'
-
+                
                 if content and len(content.strip()) > 50:
                     return {
                         'url': url,
@@ -169,7 +169,7 @@ class WebContentExtractor:
                     }
             except Exception as e:
                 logger.warning(f"BeautifulSoup method failed for {url}: {e}")
-
+            
             # All methods failed
             return {
                 'url': url,
@@ -180,7 +180,7 @@ class WebContentExtractor:
                 'success': False,
                 'error': 'All extraction methods failed'
             }
-
+            
         except Exception as e:
             logger.error(f"Content extraction failed for {url}: {e}")
             return {
@@ -195,32 +195,32 @@ class WebContentExtractor:
 
 class GoogleWebSearchService:
     """Enhanced Google web search service"""
-
+    
     def __init__(self):
         self.api_key = os.environ.get('GOOGLE_API_KEY', '')
         self.cse_id = os.environ.get('GOOGLE_CSE_ID', '')
         self.base_url = "https://www.googleapis.com/customsearch/v1"
-
+        
         if not self.api_key:
             logger.warning("GOOGLE_API_KEY not set. Web search functionality will be limited.")
         if not self.cse_id:
             logger.warning("GOOGLE_CSE_ID not set. Web search functionality will be limited.")
-
+    
     async def search(self, query: str, num_results: int = 5) -> List[Dict[str, Any]]:
         """
         Perform a Google web search
-
+        
         Args:
             query: Search query
             num_results: Number of results to return (max 10)
-
+            
         Returns:
             List of search results with title, link, snippet
         """
         if not self.api_key or not self.cse_id:
             logger.error("Google API credentials not configured")
             return []
-
+        
         try:
             params = {
                 'key': self.api_key,
@@ -229,14 +229,14 @@ class GoogleWebSearchService:
                 'num': min(num_results, 10),
                 'safe': 'active'
             }
-
+            
             logger.info(f"Performing Google search for: {query}")
             response = requests.get(self.base_url, params=params, timeout=10)
             response.raise_for_status()
-
+            
             data = response.json()
             results = []
-
+            
             if 'items' in data:
                 for item in data['items']:
                     results.append({
@@ -245,41 +245,41 @@ class GoogleWebSearchService:
                         'snippet': item.get('snippet', ''),
                         'displayLink': item.get('displayLink', '')
                     })
-
+            
             logger.info(f"Found {len(results)} search results")
             return results
-
+            
         except Exception as e:
             logger.error(f"Google search failed: {e}")
             return []
 
 class DeepSeekAdvancedResearchService:
     """Advanced research service with multi-step process"""
-
+    
     def __init__(self):
         self.api_key = os.environ.get('DEEPSEEK_API_KEY', '')
         self.api_url = os.environ.get('DEEPSEEK_API_URL', 'https://api.deepseek.com')
         self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.api_url)
         self.web_search = GoogleWebSearchService()
         self.content_extractor = WebContentExtractor()
-
+        
         if not self.api_key:
             logger.error("DEEPSEEK_API_KEY not set")
             raise ValueError("DEEPSEEK_API_KEY environment variable is required")
-
+    
     async def step0_check_web_search_necessity(self, original_question: str) -> Dict[str, Any]:
         """
         Step 0: Check if web search is necessary for answering the question
-
+        
         Args:
             original_question: The original research question
-
+            
         Returns:
             Dictionary with decision and either search query or direct answer
         """
         try:
             logger.info("Step 0: Checking if web search is necessary")
-
+            
             system_message = """You are an expert research assistant. Your task is to analyze a question and determine whether web search is necessary to provide a comprehensive and accurate answer.
 
 Instructions:
@@ -301,7 +301,6 @@ Questions that typically DON'T need web search:
 - Mathematical calculations
 - Theoretical concepts and explanations
 - Programming concepts and syntax
-- A user requests a simple translation into another language
 - Well-established scientific principles"""
 
             user_prompt = f"""Question: {original_question}
@@ -317,10 +316,10 @@ Please analyze this question and determine if web search is necessary. If web se
                 stream=False,
                 timeout=30.0
             )
-
+            
             response_text = response.choices[0].message.content
             logger.info(f"DeepSeek web search necessity check: {response_text[:200]}...")
-
+            
             # Check if response contains a search query
             query_match = re.search(r'Query="([^"]+)"', response_text)
             if query_match:
@@ -338,7 +337,7 @@ Please analyze this question and determine if web search is necessary. If web se
                     'direct_answer': response_text,
                     'response': response_text
                 }
-
+                
         except Exception as e:
             logger.error(f"Step 0 failed: {e}")
             # Default to web search if check fails
@@ -351,16 +350,16 @@ Please analyze this question and determine if web search is necessary. If web se
     async def step1_generate_search_query(self, original_question: str) -> str:
         """
         Step 1: Use DeepSeek to generate optimal search query (legacy method)
-
+        
         Args:
             original_question: The original research question
-
+            
         Returns:
             Optimized search query in format Query="BBB"
         """
         try:
             logger.info("Step 1: Generating optimal search query")
-
+            
             system_message = """You are an expert research assistant. Your task is to analyze a research question and generate the most effective search query for finding relevant information on the web.
 
 Instructions:
@@ -384,10 +383,10 @@ Please generate the optimal search query for finding comprehensive information t
                 stream=False,
                 timeout=30.0
             )
-
+            
             response_text = response.choices[0].message.content
             logger.info(f"DeepSeek query generation response: {response_text}")
-
+            
             # Extract query from response
             query_match = re.search(r'Query="([^"]+)"', response_text)
             if query_match:
@@ -398,62 +397,62 @@ Please generate the optimal search query for finding comprehensive information t
                 # Fallback: use the original question
                 logger.warning("Could not extract query from response, using original question")
                 return original_question
-
+                
         except Exception as e:
             logger.error(f"Step 1 failed: {e}")
             return original_question
-
+    
     async def step2_web_search(self, search_query: str) -> List[Dict[str, Any]]:
         """
         Step 2: Perform Google web search
-
+        
         Args:
             search_query: The optimized search query
-
+            
         Returns:
             List of search results
         """
         logger.info("Step 2: Performing web search")
         return await self.web_search.search(search_query, num_results=5)
-
+    
     async def step3_extract_content(self, search_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Step 3: Extract full content from search result pages
-
+        
         Args:
             search_results: List of search results from Google
-
+            
         Returns:
             List of extracted content with metadata
         """
         logger.info("Step 3: Extracting content from search results")
-
+        
         extracted_contents = []
         for i, result in enumerate(search_results):
             logger.info(f"Extracting content from result {i+1}/{len(search_results)}: {result['link']}")
-
+            
             content = await self.content_extractor.extract_article_content(result['link'])
             content['search_result'] = result  # Include original search result
             extracted_contents.append(content)
-
+            
             # Add delay to be respectful to websites
             await asyncio.sleep(1)
-
+        
         return extracted_contents
-
+    
     async def step4_analyze_relevance(self, original_question: str, extracted_contents: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Step 4: Use DeepSeek Reasoning to analyze content relevance
-
+        
         Args:
             original_question: The original research question
             extracted_contents: List of extracted content from web pages
-
+            
         Returns:
             Analysis results with relevance assessment
         """
         logger.info("Step 4: Analyzing content relevance with DeepSeek Reasoning")
-
+        
         try:
             # Prepare content for analysis
             content_summaries = []
@@ -472,7 +471,7 @@ URL: {content['url']}
 Error: {content.get('error', 'Unknown error')}
 """
                 content_summaries.append(summary)
-
+            
             system_message = """You are an expert research analyst with advanced reasoning capabilities. Your task is to analyze extracted web content and determine its relevance to answering a specific research question.
 
 Instructions:
@@ -508,12 +507,12 @@ Please analyze each source for relevance to the original question and provide:
                 stream=False,
                 timeout=60.0
             )
-
+            
             # Extract reasoning and answer content
             message = response.choices[0].message
             reasoning_content = getattr(message, 'reasoning_content', '') if hasattr(message, 'reasoning_content') else ''
             analysis_content = message.content or ''
-
+            
             return {
                 'original_question': original_question,
                 'analysis_content': analysis_content,
@@ -523,7 +522,7 @@ Please analyze each source for relevance to the original question and provide:
                 'model': response.model,
                 'timestamp': datetime.utcnow().isoformat()
             }
-
+            
         except Exception as e:
             logger.error(f"Step 4 analysis failed: {e}")
             return {
@@ -531,25 +530,25 @@ Please analyze each source for relevance to the original question and provide:
                 'error': str(e),
                 'timestamp': datetime.utcnow().isoformat()
             }
-
+    
     async def conduct_advanced_research(self, original_question: str) -> Dict[str, Any]:
         """
         Conduct the complete advanced research process with web search necessity check
-
+        
         Args:
             original_question: The original research question
-
+            
         Returns:
             Complete research results
         """
         logger.info(f"Starting advanced research for: {original_question}")
-
+        
         results = {
             'original_question': original_question,
             'timestamp': datetime.utcnow().isoformat(),
             'steps': {}
         }
-
+        
         try:
             # Step 0: Check if web search is necessary
             necessity_check = await self.step0_check_web_search_necessity(original_question)
@@ -559,7 +558,7 @@ Please analyze each source for relevance to the original question and provide:
                 'response': necessity_check['response'],
                 'success': True
             }
-
+            
             # If web search is not needed, return direct answer
             if not necessity_check['web_search_needed']:
                 results['direct_answer'] = necessity_check['direct_answer']
@@ -567,12 +566,12 @@ Please analyze each source for relevance to the original question and provide:
                 results['research_type'] = 'direct_answer'
                 logger.info("Research completed with direct answer (no web search needed)")
                 return results
-
+            
             # If web search is needed, continue with the full process
             search_query = necessity_check['search_query']
             results['research_type'] = 'web_search_research'
             results['steps']['step0']['search_query'] = search_query
-
+            
             # Step 2: Web search (Step 1 is now integrated into Step 0)
             search_results = await self.step2_web_search(search_query)
             results['steps']['step2'] = {
@@ -581,11 +580,11 @@ Please analyze each source for relevance to the original question and provide:
                 'results_count': len(search_results),
                 'success': len(search_results) > 0
             }
-
+            
             if not search_results:
                 results['error'] = 'No search results found'
                 return results
-
+            
             # Step 3: Extract content
             extracted_contents = await self.step3_extract_content(search_results)
             results['steps']['step3'] = {
@@ -595,7 +594,7 @@ Please analyze each source for relevance to the original question and provide:
                 'total_extractions': len(extracted_contents),
                 'success': any(c['success'] for c in extracted_contents)
             }
-
+            
             # Step 4: Analyze relevance
             analysis = await self.step4_analyze_relevance(original_question, extracted_contents)
             results['steps']['step4'] = {
@@ -603,36 +602,36 @@ Please analyze each source for relevance to the original question and provide:
                 'analysis': analysis,
                 'success': 'error' not in analysis
             }
-
+            
             results['success'] = True
             logger.info("Advanced research completed successfully")
-
+            
         except Exception as e:
             logger.error(f"Advanced research failed: {e}")
             results['error'] = str(e)
             results['success'] = False
-
+        
         return results
 
     async def conduct_legacy_research(self, original_question: str) -> Dict[str, Any]:
         """
         Conduct the legacy 4-step research process (always performs web search)
-
+        
         Args:
             original_question: The original research question
-
+            
         Returns:
             Complete research results
         """
         logger.info(f"Starting legacy research for: {original_question}")
-
+        
         results = {
             'original_question': original_question,
             'timestamp': datetime.utcnow().isoformat(),
             'steps': {},
             'research_type': 'legacy_web_search'
         }
-
+        
         try:
             # Step 1: Generate search query
             search_query = await self.step1_generate_search_query(original_question)
@@ -641,7 +640,7 @@ Please analyze each source for relevance to the original question and provide:
                 'search_query': search_query,
                 'success': True
             }
-
+            
             # Step 2: Web search
             search_results = await self.step2_web_search(search_query)
             results['steps']['step2'] = {
@@ -650,11 +649,11 @@ Please analyze each source for relevance to the original question and provide:
                 'results_count': len(search_results),
                 'success': len(search_results) > 0
             }
-
+            
             if not search_results:
                 results['error'] = 'No search results found'
                 return results
-
+            
             # Step 3: Extract content
             extracted_contents = await self.step3_extract_content(search_results)
             results['steps']['step3'] = {
@@ -664,7 +663,7 @@ Please analyze each source for relevance to the original question and provide:
                 'total_extractions': len(extracted_contents),
                 'success': any(c['success'] for c in extracted_contents)
             }
-
+            
             # Step 4: Analyze relevance
             analysis = await self.step4_analyze_relevance(original_question, extracted_contents)
             results['steps']['step4'] = {
@@ -672,15 +671,15 @@ Please analyze each source for relevance to the original question and provide:
                 'analysis': analysis,
                 'success': 'error' not in analysis
             }
-
+            
             results['success'] = True
             logger.info("Legacy research completed successfully")
-
+            
         except Exception as e:
             logger.error(f"Legacy research failed: {e}")
             results['error'] = str(e)
             results['success'] = False
-
+        
         return results
 
 def print_separator(char="=", length=80):
@@ -702,25 +701,25 @@ async def test_advanced_research():
     print("3. Extract full article content")
     print("4. Analyze relevance with reasoning")
     print_separator()
-
+    
     # Initialize service
     try:
         service = DeepSeekAdvancedResearchService()
     except ValueError as e:
         print(f"? {e}")
         return
-
+    
     # Test question
     original_question = "Find the CRM/SFA software available in Japan and make the rank by their revenues"
     print(f"? Research Question: {original_question}")
-
+    
     # Conduct research
     results = await service.conduct_advanced_research(original_question)
-
+    
     if not results.get('success'):
         print(f"? Research failed: {results.get('error', 'Unknown error')}")
         return
-
+    
     # Display results
     print_step_header(1, "Search Query Generation")
     step1 = results['steps'].get('step1', {})
@@ -728,7 +727,7 @@ async def test_advanced_research():
         print(f"? Generated search query: \"{step1['search_query']}\"")
     else:
         print("? Failed to generate search query")
-
+    
     print_step_header(2, "Web Search Results")
     step2 = results['steps'].get('step2', {})
     if step2.get('success'):
@@ -739,7 +738,7 @@ async def test_advanced_research():
             print(f"     Snippet: {result['snippet'][:100]}...")
     else:
         print("? No search results found")
-
+    
     print_step_header(3, "Content Extraction")
     step3 = results['steps'].get('step3', {})
     if step3.get('success'):
@@ -752,7 +751,7 @@ async def test_advanced_research():
                 print(f"     Error: {content.get('error', 'Unknown error')}")
     else:
         print("? Failed to extract content from any pages")
-
+    
     print_step_header(4, "Relevance Analysis")
     step4 = results['steps'].get('step4', {})
     if step4.get('success'):
@@ -760,19 +759,19 @@ async def test_advanced_research():
         print(f"? Analysis completed using {analysis.get('model', 'unknown')} model")
         print(f"? Sources analyzed: {analysis.get('sources_analyzed', 0)}")
         print(f"? Successful extractions: {analysis.get('successful_extractions', 0)}")
-
+        
         if analysis.get('reasoning_content'):
             print("\n? REASONING PROCESS:")
             reasoning = analysis['reasoning_content']
             print(reasoning[:1000] + "..." if len(reasoning) > 1000 else reasoning)
-
+        
         print("\n? FINAL ANALYSIS:")
         print(analysis.get('analysis_content', 'No analysis available'))
     else:
         print("? Analysis failed")
         if 'analysis' in step4 and 'error' in step4['analysis']:
             print(f"Error: {step4['analysis']['error']}")
-
+    
     print_separator()
     print("? Advanced research process completed!")
 async def test_intelligent_research():
@@ -786,31 +785,31 @@ async def test_intelligent_research():
     print("3. If needed: Extract full article content")
     print("4. If needed: Analyze relevance with reasoning")
     print_separator()
-
+    
     # Initialize service
     try:
         service = DeepSeekAdvancedResearchService()
     except ValueError as e:
         print(f"? {e}")
         return
-
+    
     # Test questions - one that needs web search, one that doesn't
     test_questions = [
         "Find the CRM/SFA software available in Japan and make the rank by their revenues",
         "What is the difference between a list and a tuple in Python programming?"
     ]
-
+    
     for i, original_question in enumerate(test_questions, 1):
         print(f"\n? TEST {i}: {original_question}")
         print("-" * 80)
-
+        
         # Conduct research
         results = await service.conduct_advanced_research(original_question)
-
+        
         if not results.get('success'):
             print(f"? Research failed: {results.get('error', 'Unknown error')}")
             continue
-
+        
         # Display results based on research type
         print_step_header(0, "Web Search Necessity Check")
         step0 = results['steps'].get('step0', {})
@@ -821,13 +820,13 @@ async def test_intelligent_research():
                 print(f"? Generated search query: \"{step0.get('search_query', 'N/A')}\"")
             else:
                 print(f"? Web search NOT needed - providing direct answer")
-
+        
         if results.get('research_type') == 'direct_answer':
             print("\n? DIRECT ANSWER:")
             print(results.get('direct_answer', 'No answer available'))
             print("\n? Research completed without web search!")
             continue
-
+        
         # If web search was performed, show those results
         print_step_header(2, "Web Search Results")
         step2 = results['steps'].get('step2', {})
@@ -838,14 +837,14 @@ async def test_intelligent_research():
                 print(f"     URL: {result['link']}")
         else:
             print("? No search results found")
-
+        
         print_step_header(3, "Content Extraction")
         step3 = results['steps'].get('step3', {})
         if step3.get('success'):
             print(f"? Successfully extracted content from {step3['successful_extractions']}/{step3['total_extractions']} pages")
         else:
             print("? Failed to extract content from any pages")
-
+        
         print_step_header(4, "Relevance Analysis")
         step4 = results['steps'].get('step4', {})
         if step4.get('success'):
@@ -856,9 +855,9 @@ async def test_intelligent_research():
             print(analysis_content[:800] + "..." if len(analysis_content) > 800 else analysis_content)
         else:
             print("? Analysis failed")
-
+        
         print(f"\n? Test {i} completed!")
-
+    
     print_separator()
     print("? All intelligent research tests completed!")
 
@@ -872,26 +871,26 @@ async def test_legacy_research():
     print("3. Extract full article content")
     print("4. Analyze relevance with reasoning")
     print_separator()
-
+    
     # Initialize service
     try:
         service = DeepSeekAdvancedResearchService()
     except ValueError as e:
         print(f"? {e}")
         return
-
+    
     # Test question that normally wouldn't need web search
     original_question = "What is the difference between a list and a tuple in Python programming?"
     print(f"? Research Question: {original_question}")
     print("(This question normally wouldn't need web search, but legacy mode forces it)")
-
+    
     # Conduct legacy research
     results = await service.conduct_legacy_research(original_question)
-
+    
     if not results.get('success'):
         print(f"? Research failed: {results.get('error', 'Unknown error')}")
         return
-
+    
     # Display results
     print_step_header(1, "Search Query Generation")
     step1 = results['steps'].get('step1', {})
@@ -899,7 +898,7 @@ async def test_legacy_research():
         print(f"? Generated search query: \"{step1['search_query']}\"")
     else:
         print("? Failed to generate search query")
-
+    
     print_step_header(2, "Web Search Results")
     step2 = results['steps'].get('step2', {})
     if step2.get('success'):
@@ -909,14 +908,14 @@ async def test_legacy_research():
             print(f"     URL: {result['link']}")
     else:
         print("? No search results found")
-
+    
     print_step_header(3, "Content Extraction")
     step3 = results['steps'].get('step3', {})
     if step3.get('success'):
         print(f"? Successfully extracted content from {step3['successful_extractions']}/{step3['total_extractions']} pages")
     else:
         print("? Failed to extract content from any pages")
-
+    
     print_step_header(4, "Relevance Analysis")
     step4 = results['steps'].get('step4', {})
     if step4.get('success'):
@@ -927,20 +926,20 @@ async def test_legacy_research():
         print(analysis_content[:800] + "..." if len(analysis_content) > 800 else analysis_content)
     else:
         print("? Analysis failed")
-
+    
     print_separator()
     print("? Legacy research process completed!")
 
 def check_environment():
     """Check if required environment variables are set"""
     print("? Checking environment variables...")
-
+    
     required_vars = {
         'DEEPSEEK_API_KEY': os.environ.get('DEEPSEEK_API_KEY'),
         'GOOGLE_API_KEY': os.environ.get('GOOGLE_API_KEY'),
         'GOOGLE_CSE_ID': os.environ.get('GOOGLE_CSE_ID')
     }
-
+    
     missing_vars = []
     for var, value in required_vars.items():
         if value and value != f"your_{var.lower()}_here":
@@ -949,34 +948,34 @@ def check_environment():
         else:
             print(f"? {var}: Not set")
             missing_vars.append(var)
-
+    
     if missing_vars:
         print(f"\n??  Missing environment variables: {', '.join(missing_vars)}")
         print("\nPlease configure your .env file with the required API keys.")
         return False
-
+    
     return True
 
 async def main():
     """Main test function"""
     print("DEEPSEEK ADVANCED WEB RESEARCH")
     print("=" * 50)
-
+    
     # Check environment
     if not check_environment():
         print("\n? Environment setup incomplete. Please configure required variables.")
         sys.exit(1)
-
+    
     try:
         # Run the intelligent research test (with web search necessity check)
         await test_intelligent_research()
-
+        
         # Optionally run legacy test to show the difference
-#comment out        print("\n" + "=" * 80)
-#comment out        print("COMPARISON: Legacy Research Mode")
-#comment out        print("=" * 80)
-#comment out        await test_legacy_research()
-
+        print("\n" + "=" * 80)
+        print("COMPARISON: Legacy Research Mode")
+        print("=" * 80)
+        await test_legacy_research()
+        
     except Exception as e:
         logger.error(f"Test failed: {e}")
         print(f"\n? Test failed: {e}")
