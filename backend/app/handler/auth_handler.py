@@ -8,9 +8,148 @@ from datetime import datetime, timedelta
 import jwt
 from tornado.auth import GoogleOAuth2Mixin, OAuth2Mixin
 import os
+import smtplib
+from email.message import EmailMessage
+import random
 
 # Get logger
 logger = logging.getLogger(__name__)
+
+async def send_verification_email(email, code):
+    """
+    Sends a verification code to the user's email address.
+    """
+    try:
+        smtp_host = os.environ.get('SMTP_HOST')
+        smtp_port = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user = os.environ.get('SMTP_USER')
+        smtp_password = os.environ.get('SMTP_PASSWORD')
+        sender_email = os.environ.get('SENDER_EMAIL', smtp_user)
+
+        if not all([smtp_host, smtp_port, smtp_user, smtp_password, sender_email]):
+            logger.error("SMTP settings are not fully configured in the environment.")
+            # In a real app, you might have a fallback or a more robust notification system.
+            # For this example, we'll log the error and the code.
+            logger.error(f"VERIFICATION CODE for {email}: {code}")
+            return True # Pretend it was sent
+
+        msg = EmailMessage()
+        msg.set_content(f'Your verification code is: {code}')
+        msg['Subject'] = 'Your DeepSchina Verification Code'
+        msg['From'] = sender_email
+        msg['To'] = email
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        
+        logger.info(f"Verification email sent to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send verification email to {email}: {e}")
+        logger.error(traceback.format_exc())
+        return False
+
+async def send_password_reset_email(email, reset_token, base_url="http://localhost:8888"):
+    """
+    Sends a password reset email to the user's email address.
+    """
+    try:
+        smtp_host = os.environ.get('SMTP_HOST')
+        smtp_port = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user = os.environ.get('SMTP_USER')
+        smtp_password = os.environ.get('SMTP_PASSWORD')
+        sender_email = os.environ.get('SENDER_EMAIL', smtp_user)
+
+        if not all([smtp_host, smtp_port, smtp_user, smtp_password, sender_email]):
+            logger.error("SMTP settings are not fully configured in the environment.")
+            # In a real app, you might have a fallback or a more robust notification system.
+            # For this example, we'll log the error and the reset link.
+            reset_url = f"{base_url}/auth/reset-password?token={reset_token}"
+            logger.error(f"PASSWORD RESET LINK for {email}: {reset_url}")
+            return True # Pretend it was sent
+
+        # Create reset URL
+        reset_url = f"{base_url}/auth/reset-password?token={reset_token}"
+        
+        # HTML email content
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Password Reset - DeepSchina</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #ff9776;">Password Reset Request</h2>
+        <p>Hello,</p>
+        <p>You requested a password reset for your DeepSchina account. Click the button below to reset your password:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{reset_url}"
+               style="background-color: #ff9776; color: white; padding: 12px 30px;
+                      text-decoration: none; border-radius: 5px; display: inline-block;">
+                Reset Password
+            </a>
+        </div>
+        
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; background-color: #f5f5f5; padding: 10px; border-radius: 3px;">
+            {reset_url}
+        </p>
+        
+        <p><strong>This link will expire in 30 minutes.</strong></p>
+        
+        <p>If you didn't request this password reset, please ignore this email. Your password will remain unchanged.</p>
+        
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="font-size: 12px; color: #666;">
+            This is an automated message from DeepSchina. Please do not reply to this email.
+        </p>
+    </div>
+</body>
+</html>
+        """
+        
+        # Plain text content
+        text_content = f"""
+Password Reset Request - DeepSchina
+
+Hello,
+
+You requested a password reset for your DeepSchina account.
+
+Please visit the following link to reset your password:
+{reset_url}
+
+This link will expire in 30 minutes.
+
+If you didn't request this password reset, please ignore this email. Your password will remain unchanged.
+
+---
+This is an automated message from DeepSchina. Please do not reply to this email.
+        """
+
+        msg = EmailMessage()
+        msg.set_content(text_content)
+        msg.add_alternative(html_content, subtype='html')
+        msg['Subject'] = 'Password Reset - DeepSchina'
+        msg['From'] = sender_email
+        msg['To'] = email
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        
+        logger.info(f"Password reset email sent to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send password reset email to {email}: {e}")
+        logger.error(traceback.format_exc())
+        return False
 
 class BaseAuthHandler(tornado.web.RequestHandler):
     """
@@ -85,49 +224,120 @@ class RegisterHandler(BaseAuthHandler):
                 self.write({'error': 'Email and password are required'})
                 return
             
-            # Check if user already exists with email auth
+            # Check if user already exists and is verified
             existing_user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'email')
-            if existing_user:
-                logger.warning(f"User with email {email} and email auth already exists")
+            if existing_user and existing_user.get('is_verified'):
+                logger.warning(f"Verified user with email {email} already exists")
                 self.set_status(409)
-                self.write({'error': 'User with this email already exists'})
+                self.write({'error': 'A verified user with this email already exists'})
                 return
             
+            # Generate verification code
+            verification_code = str(random.randint(100000, 999999))
+            verification_expires = datetime.utcnow() + timedelta(minutes=15) # 15-minute expiry
+
             # Hash the password
             hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
             
-            # Create user document
-            user_doc = {
-                'email': email,  # Will be masked and hashed in create_user
-                'username': username,
-                'password': hashed_password.decode('utf-8'),
-                'auth_type': 'email'
-            }
-            
-            # Store the user in MongoDB
-            try:
+            if existing_user: # User exists but is not verified, update them
+                user_id = existing_user['_id']
+                await self.application.mongodb.update_user(user_id, {
+                    'password': hashed_password.decode('utf-8'),
+                    'verification_code': verification_code,
+                    'verification_expires': verification_expires,
+                    'is_verified': False,
+                })
+                logger.info(f"Updated unverified user {email} with new verification code.")
+            else: # Create a new unverified user
+                user_doc = {
+                    'email': email,  # Will be masked and hashed in create_user
+                    'username': username,
+                    'password': hashed_password.decode('utf-8'),
+                    'auth_type': 'email',
+                    'is_verified': False,
+                    'verification_code': verification_code,
+                    'verification_expires': verification_expires
+                }
                 user_id = await self.application.mongodb.create_user(user_doc)
-                logger.info(f"User created with ID: {user_id}")
-                
-                # Set the current user
-                self.set_current_user(str(user_id))
-                
-                # Generate JWT token
-                token = self.generate_jwt_token(str(user_id))
-                
-                # Return success response
+                logger.info(f"Created unverified user {email} with ID: {user_id}")
+
+            # Send verification email
+            email_sent = await send_verification_email(email, verification_code)
+            
+            if email_sent:
                 self.write({
                     'success': True,
-                    'user_id': str(user_id),
-                    'token': token
+                    'message': 'Registration successful. Please check your email for a verification code.',
+                    'email': email
                 })
-            except Exception as e:
-                logger.error(f"Error creating user: {e}")
-                logger.error(traceback.format_exc())
+            else:
                 self.set_status(500)
-                self.write({'error': f'Error creating user: {str(e)}'})
+                self.write({'error': 'Failed to send verification email.'})
+
         except Exception as e:
             logger.error(f"Unexpected error in RegisterHandler: {e}")
+            logger.error(traceback.format_exc())
+            self.set_status(500)
+            self.write({'error': f'Server error: {str(e)}'})
+
+class EmailVerificationHandler(BaseAuthHandler):
+    """
+    Handler for verifying user's email address
+    """
+    async def post(self):
+        try:
+            data = json.loads(self.request.body)
+            email = data.get('email')
+            code = data.get('code')
+
+            if not email or not code:
+                self.set_status(400)
+                self.write({'error': 'Email and verification code are required'})
+                return
+
+            user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'email')
+
+            if not user:
+                self.set_status(404)
+                self.write({'error': 'User not found'})
+                return
+
+            if user.get('is_verified'):
+                self.set_status(400)
+                self.write({'error': 'Email is already verified'})
+                return
+
+            if user.get('verification_code') != code:
+                self.set_status(400)
+                self.write({'error': 'Invalid verification code'})
+                return
+            
+            if datetime.utcnow() > user.get('verification_expires'):
+                self.set_status(400)
+                self.write({'error': 'Verification code has expired'})
+                return
+            
+            # Verification successful
+            await self.application.mongodb.update_user(user['_id'], {
+                'is_verified': True,
+                'verification_code': None, # Clear the code
+                'verification_expires': None,
+                'email_verified_at': datetime.utcnow()
+            })
+            
+            user_id = str(user['_id'])
+            self.set_current_user(user_id)
+            token = self.generate_jwt_token(user_id)
+
+            self.write({
+                'success': True,
+                'message': 'Email verified successfully.',
+                'user_id': user_id,
+                'token': token
+            })
+
+        except Exception as e:
+            logger.error(f"Unexpected error in EmailVerificationHandler: {e}")
             logger.error(traceback.format_exc())
             self.set_status(500)
             self.write({'error': f'Server error: {str(e)}'})
@@ -163,6 +373,15 @@ class LoginHandler(BaseAuthHandler):
                 self.write({'error': 'Invalid email or password'})
                 return
             
+            # Check if user is verified
+            if not user.get('is_verified'):
+                logger.warning(f"Login attempt from unverified user {email}")
+                self.set_status(401)
+                # To prevent user enumeration, we give a generic error.
+                # But we can also send a specific one to the client to prompt for verification.
+                self.write({'error': 'Please verify your email before logging in.', 'email_not_verified': True, 'email': email})
+                return
+
             # Check password
             stored_password = user.get('password', '').encode('utf-8')
             if not bcrypt.checkpw(password.encode('utf-8'), stored_password):
@@ -790,6 +1009,190 @@ class UserProfileHandler(BaseAuthHandler):
             self.write(user)
         except Exception as e:
             logger.error(f"Unexpected error in UserProfileHandler: {e}")
+            logger.error(traceback.format_exc())
+            self.set_status(500)
+            self.write({'error': f'Server error: {str(e)}'})
+
+class ForgotPasswordHandler(BaseAuthHandler):
+    """
+    Handler for forgot password requests
+    """
+    async def post(self):
+        try:
+            # Parse request body
+            try:
+                data = json.loads(self.request.body)
+                email = data.get('email')
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in request: {e}")
+                self.set_status(400)
+                self.write({'error': f'Invalid JSON: {str(e)}'})
+                return
+            
+            if not email:
+                logger.warning("Email is required for password reset")
+                self.set_status(400)
+                self.write({'error': 'Email is required'})
+                return
+            
+            # Check rate limiting first
+            rate_limit_ok = await self.application.mongodb.check_reset_rate_limit(email, 'email')
+            if not rate_limit_ok:
+                logger.warning(f"Rate limit exceeded for password reset: {email}")
+                self.set_status(429)
+                self.write({
+                    'error': 'Too many reset requests. Please wait before trying again.',
+                    'retry_after': 3600
+                })
+                return
+            
+            # Check if user exists with email auth (don't reveal if user doesn't exist)
+            user = await self.application.mongodb.get_user_by_email_and_auth_type(email, 'email')
+            
+            # Always return success to prevent user enumeration
+            # But only send email if user actually exists
+            if user and user.get('is_verified'):
+                # Generate secure reset token
+                import secrets
+                reset_token = secrets.token_urlsafe(24)[:32]
+                
+                # Set token expiration (30 minutes from now)
+                from datetime import datetime, timedelta
+                reset_token_expires = datetime.utcnow() + timedelta(minutes=30)
+                
+                # Store reset token in database
+                token_stored = await self.application.mongodb.update_user_reset_token(
+                    email, 'email', reset_token, reset_token_expires
+                )
+                
+                if token_stored:
+                    # Send password reset email
+                    base_url = self.request.protocol + "://" + self.request.host
+                    email_sent = await send_password_reset_email(email, reset_token, base_url)
+                    
+                    if email_sent:
+                        logger.info(f"Password reset email sent to {email}")
+                    else:
+                        logger.error(f"Failed to send password reset email to {email}")
+                else:
+                    logger.error(f"Failed to store reset token for {email}")
+            else:
+                # User doesn't exist or isn't verified, but don't reveal this
+                logger.info(f"Password reset requested for non-existent or unverified user: {email}")
+            
+            # Always return success message to prevent user enumeration
+            self.write({
+                'success': True,
+                'message': 'If an account with this email exists, you will receive a password reset link.'
+            })
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in ForgotPasswordHandler: {e}")
+            logger.error(traceback.format_exc())
+            self.set_status(500)
+            self.write({'error': f'Server error: {str(e)}'})
+
+class ResetPasswordHandler(BaseAuthHandler):
+    """
+    Handler for password reset confirmation
+    """
+    async def get(self):
+        """
+        Display password reset form (validate token)
+        """
+        try:
+            reset_token = self.get_argument('token', None)
+            
+            if not reset_token:
+                logger.warning("Reset token is required")
+                self.set_status(400)
+                self.render('reset_password.html', error="Invalid reset link")
+                return
+            
+            # Validate reset token
+            user = await self.application.mongodb.get_user_by_reset_token(reset_token)
+            
+            if not user:
+                logger.warning(f"Invalid or expired reset token: {reset_token[:8]}...")
+                self.set_status(400)
+                self.render('reset_password.html', error="Invalid or expired reset link")
+                return
+            
+            # Token is valid, show reset form
+            self.render('reset_password.html',
+                       email_masked=user.get('email_masked'),
+                       reset_token=reset_token,
+                       error=None)
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in ResetPasswordHandler GET: {e}")
+            logger.error(traceback.format_exc())
+            self.set_status(500)
+            self.render('reset_password.html', error="Server error occurred")
+    
+    async def post(self):
+        """
+        Process password reset
+        """
+        try:
+            # Parse request body
+            try:
+                data = json.loads(self.request.body)
+                reset_token = data.get('token')
+                new_password = data.get('new_password')
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in request: {e}")
+                self.set_status(400)
+                self.write({'error': f'Invalid JSON: {str(e)}'})
+                return
+            
+            if not reset_token or not new_password:
+                logger.warning("Reset token and new password are required")
+                self.set_status(400)
+                self.write({'error': 'Reset token and new password are required'})
+                return
+            
+            # Validate password strength
+            if len(new_password) < 8:
+                self.set_status(400)
+                self.write({'error': 'Password must be at least 8 characters long'})
+                return
+            
+            # Validate reset token
+            user = await self.application.mongodb.get_user_by_reset_token(reset_token)
+            
+            if not user:
+                logger.warning(f"Invalid or expired reset token: {reset_token[:8]}...")
+                self.set_status(400)
+                self.write({'error': 'Invalid or expired reset token'})
+                return
+            
+            # Hash the new password
+            import bcrypt
+            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+            
+            # Update user password
+            user_id = str(user['_id'])
+            update_result = await self.application.mongodb.update_user(user_id, {
+                'password': hashed_password.decode('utf-8')
+            })
+            
+            if update_result > 0:
+                # Clear the reset token
+                await self.application.mongodb.clear_reset_token(user_id)
+                
+                logger.info(f"Password reset successful for user: {user_id}")
+                self.write({
+                    'success': True,
+                    'message': 'Password has been reset successfully.'
+                })
+            else:
+                logger.error(f"Failed to update password for user: {user_id}")
+                self.set_status(500)
+                self.write({'error': 'Failed to update password'})
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in ResetPasswordHandler POST: {e}")
             logger.error(traceback.format_exc())
             self.set_status(500)
             self.write({'error': f'Server error: {str(e)}'})

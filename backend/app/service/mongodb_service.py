@@ -152,6 +152,10 @@ class MongoDBService:
             await self.users.create_index("auth_type")
             await self.users.create_index([("email_masked", 1), ("auth_type", 1)])  # Compound index
             
+            # Password reset indexes
+            await self.users.create_index("reset_token", sparse=True)  # Index for reset token lookups
+            await self.users.create_index("reset_token_expires", sparse=True)  # Index for expiration cleanup
+            
             # Create indexes for chats collection
             await self.chats.create_index("user_id")
             await self.chats.create_index("updated_at")
@@ -428,4 +432,142 @@ class MongoDBService:
             return messages
         except Exception as e:
             logger.error(f"Error getting shared messages: {e}")
+            raise
+    
+    # Password Reset methods
+    
+    async def update_user_reset_token(self, email, auth_type, reset_token, reset_token_expires):
+        """
+        Store password reset token for a user
+        """
+        try:
+            import hashlib
+            
+            # Hash the token for secure storage
+            hashed_token = hashlib.sha256(reset_token.encode()).hexdigest()
+            
+            # Find user by email and auth_type
+            email_hash = self._generate_email_hash(email, auth_type)
+            
+            # Update user with reset token info
+            result = await self.users.update_one(
+                {"email_hash": email_hash},
+                {
+                    "$set": {
+                        "reset_token": hashed_token,
+                        "reset_token_expires": reset_token_expires,
+                        "reset_token_created": datetime.utcnow()
+                    },
+                    "$inc": {"reset_attempts": 1}
+                }
+            )
+            
+            if result.modified_count > 0:
+                logger.info(f"Reset token updated for user with email hash: {email_hash[:8]}...")
+                return True
+            else:
+                logger.warning(f"No user found to update reset token for email hash: {email_hash[:8]}...")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error updating user reset token: {e}")
+            raise
+    
+    async def get_user_by_reset_token(self, reset_token):
+        """
+        Get user by reset token (validates token and expiration)
+        """
+        try:
+            import hashlib
+            
+            # Hash the provided token to match stored hash
+            hashed_token = hashlib.sha256(reset_token.encode()).hexdigest()
+            
+            # Find user with matching token that hasn't expired
+            user = await self.users.find_one({
+                "reset_token": hashed_token,
+                "reset_token_expires": {"$gt": datetime.utcnow()}
+            })
+            
+            if user:
+                logger.info(f"Valid reset token found for user: {user.get('user_uid', 'unknown')}")
+            else:
+                logger.warning("Invalid or expired reset token provided")
+            
+            return user
+            
+        except Exception as e:
+            logger.error(f"Error getting user by reset token: {e}")
+            raise
+    
+    async def clear_reset_token(self, user_id):
+        """
+        Clear password reset token after successful reset
+        """
+        try:
+            result = await self.users.update_one(
+                {"_id": ObjectId(user_id)},
+                {
+                    "$unset": {
+                        "reset_token": "",
+                        "reset_token_expires": "",
+                        "reset_token_created": ""
+                    },
+                    "$set": {
+                        "password_reset_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            
+            if result.modified_count > 0:
+                logger.info(f"Reset token cleared for user: {user_id}")
+                return True
+            else:
+                logger.warning(f"No user found to clear reset token: {user_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error clearing reset token: {e}")
+            raise
+    
+    async def check_reset_rate_limit(self, email, auth_type, max_attempts=3, time_window_hours=1):
+        """
+        Check if user has exceeded reset request rate limit
+        """
+        try:
+            email_hash = self._generate_email_hash(email, auth_type)
+            
+            # Find user and check reset attempts
+            user = await self.users.find_one({"email_hash": email_hash})
+            
+            if not user:
+                return True  # Allow if user doesn't exist (don't reveal existence)
+            
+            reset_attempts = user.get('reset_attempts', 0)
+            last_reset_request = user.get('reset_token_created')
+            
+            # If no previous attempts, allow
+            if reset_attempts == 0 or not last_reset_request:
+                return True
+            
+            # Check if time window has passed
+            time_diff = datetime.utcnow() - last_reset_request
+            if time_diff.total_seconds() > (time_window_hours * 3600):
+                # Reset the counter if time window has passed
+                await self.users.update_one(
+                    {"email_hash": email_hash},
+                    {"$set": {"reset_attempts": 0}}
+                )
+                return True
+            
+            # Check if under rate limit
+            if reset_attempts < max_attempts:
+                return True
+            
+            logger.warning(f"Rate limit exceeded for email hash: {email_hash[:8]}...")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking reset rate limit: {e}")
             raise

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSchina Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <style>
+        .tab-content {
+            padding: 20px;
+        }
+        .table-responsive {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">DeepSchina Admin</a>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">Users</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="chats-tab" data-bs-toggle="tab" data-bs-target="#chats" type="button" role="tab">Chats</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="messages-tab" data-bs-toggle="tab" data-bs-target="#messages" type="button" role="tab">Messages</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="adminTabContent">
+            <!-- Users Tab -->
+            <div class="tab-pane fade show active" id="users" role="tabpanel">
+                <h3>Users</h3>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="usersTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Email (Masked)</th>
+                                <th>Auth Type</th>
+                                <th>Created At</th>
+                                <th>Last Login</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td>{{ user['_id'] }}</td>
+                                <td>{{ user.get('email_masked', 'N/A') }}</td>
+                                <td>{{ user.get('auth_type', 'N/A') }}</td>
+                                <td>{{ user.get('created_at', 'N/A') }}</td>
+                                <td>{{ user.get('last_login', 'N/A') }}</td>
+                            </tr>
+                            {% end %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Chats Tab -->
+            <div class="tab-pane fade" id="chats" role="tabpanel">
+                <h3>Chats</h3>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="chatsTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>User ID</th>
+                                <th>Title</th>
+                                <th>Created At</th>
+                                <th>Updated At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for chat in chats %}
+                            <tr>
+                                <td>{{ chat['_id'] }}</td>
+                                <td>{{ chat.get('user_id', 'N/A') }}</td>
+                                <td>{{ chat.get('title', 'N/A') }}</td>
+                                <td>{{ chat.get('created_at', 'N/A') }}</td>
+                                <td>{{ chat.get('updated_at', 'N/A') }}</td>
+                            </tr>
+                            {% end %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Messages Tab -->
+            <div class="tab-pane fade" id="messages" role="tabpanel">
+                <h3>Recent Messages</h3>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="messagesTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Chat ID</th>
+                                <th>User ID</th>
+                                <th>Type</th>
+                                <th>Message</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for message in messages %}
+                            <tr>
+                                <td>{{ message['_id'] }}</td>
+                                <td>{{ message.get('chat_id', 'N/A') }}</td>
+                                <td>{{ message.get('user_id', 'N/A') }}</td>
+                                <td>{{ message.get('type', 'N/A') }}</td>
+                                <td>{{ message.get('message', 'N/A')[:100] + '...' if len(message.get('message', '')) > 100 else message.get('message', 'N/A') }}</td>
+                                <td>{{ message.get('timestamp', 'N/A') }}</td>
+                            </tr>
+                            {% end %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#usersTable').DataTable({
+                order: [[3, 'desc']], // Sort by created_at by default
+                pageLength: 25
+            });
+            $('#chatsTable').DataTable({
+                order: [[3, 'desc']], // Sort by created_at by default
+                pageLength: 25
+            });
+            $('#messagesTable').DataTable({
+                order: [[5, 'desc']], // Sort by timestamp by default
+                pageLength: 25
+            });
+        });
+    </script>
+</body>
+</html> 

@@ -612,6 +612,47 @@
             .container { margin-left: 60px; }
             .sidebar.closed ~ .container { margin-left: 32px; }
         }
+        .auth-form {
+            display: none;
+        }
+        .auth-form.active {
+            display: block;
+        }
+        .verification-form {
+            display: none;
+        }
+        .verification-form.active {
+            display: block;
+        }
+        .auth-input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background: #181a1b;
+            color: #e0e0e0;
+            margin-bottom: 12px;
+            box-sizing: border-box; /* Ensures padding doesn't affect width */
+        }
+        .auth-notification {
+            display: none;
+            width: 100%;
+            margin-top: 15px;
+            padding: 10px;
+            font-size: 0.9em;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .alert-danger {
+            background-color: #dc354520;
+            border: 1px solid #dc3545;
+            color: #f8d7da;
+        }
+        .alert-success {
+            background-color: #28a74520;
+            border: 1px solid #28a745;
+            color: #d4edda;
+        }
     </style>
 </head>
 <body>
@@ -633,6 +674,12 @@
     <div class="personal-panel" id="personalPanel">
         <div style="font-weight: bold; margin-bottom: 8px;">Personal Panel</div>
         <div id="personalSessionInfo" style="margin-bottom: 12px; font-size: 0.98em; color: #b8c5d6;"></div>
+        <div id="adminLinkContainer" style="margin-bottom: 12px; display: none;">
+            <a href="/admin" target="_blank" style="color: #ff9776; text-decoration: none; font-size: 0.9em; display: flex; align-items: center; gap: 6px;">
+                <span>⚙️</span>
+                <span>Admin Dashboard</span>
+            </a>
+        </div>
         <button class="logout-btn" id="logoutBtn">Logout</button>
     </div>
     <div class="container">
@@ -687,27 +734,63 @@
             <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" alt="GitHub" style="width: 22px; height: 22px;"> Sign in with GitHub
         </button>
         <div class="auth-separator"></div>
+        <form id="email-login-form" style="width: 100%;">
+            <input type="email" id="login-email" class="auth-input" placeholder="Email" required>
+            <input type="password" id="login-password" class="auth-input" placeholder="Password" required>
+            <button type="submit" class="auth-provider-btn" style="width: 100%;">Sign in with Email</button>
+        </form>
+        <div style="text-align: center; margin-top: 10px;">
+            <span class="auth-switch-link" id="forgot-password-link" style="font-size: 0.9em;">Forgot Password?</span>
+        </div>
+        <div id="auth-notification-login" class="auth-notification alert-danger" role="alert"></div>
+        <div class="auth-separator"></div>
         <div>Don't have an account? <span class="auth-switch-link" id="to-register-link">Register</span></div>
     </div>
     <!-- Floating Registration Panel -->
     <div id="register-panel" class="auth-panel">
         <div class="auth-title">Register for Dxee Chat</div>
-        <div style="width: 100%; display: flex; flex-direction: column; gap: 14px; align-items: center;">
-            <button class="auth-provider-btn" id="google-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center;">
-                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google" style="width: 22px; height: 22px;"> Register with Google
-            </button>
-            <button class="auth-provider-btn" id="github-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center;">
-                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" alt="GitHub" style="width: 22px; height: 22px;"> Register with GitHub
-            </button>
-            <button class="auth-provider-btn disabled" id="microsoft-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; opacity: 0.6; cursor: not-allowed;" disabled>
-                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/microsoft/microsoft-original.svg" alt="Microsoft" style="width: 22px; height: 22px;"> Register with Microsoft
-            </button>
-            <button class="auth-provider-btn disabled" id="apple-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; opacity: 0.6; cursor: not-allowed;" disabled>
-                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/apple/apple-original.svg" alt="Apple" style="width: 22px; height: 22px;"> Register with Apple
-            </button>
+         <div class="auth-google-btn">
+            <div id="google-register-btn"></div>
         </div>
+        <button class="auth-provider-btn" id="github-register-btn" style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; margin-top: 12px;">
+            <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" alt="GitHub" style="width: 22px; height: 22px;"> Register with GitHub
+        </button>
         <div class="auth-separator"></div>
-        <div>Already have an account? <span class="auth-switch-link" id="to-login-link">Login</span></div>
+        <form id="email-register-form" style="width: 100%;">
+            <input type="email" id="register-email" class="auth-input" placeholder="Email" required>
+            <input type="password" id="register-password" class="auth-input" placeholder="Password" required>
+            <button type="submit" class="auth-provider-btn" style="width: 100%;">Register with Email</button>
+        </form>
+        <div id="auth-notification-register" class="auth-notification" role="alert"></div>
+        <div class="auth-separator"></div>
+        <div>Already have an account? <span class="auth-switch-link" id="to-login-link-from-register">Login</span></div>
+    </div>
+
+    <!-- Floating Verification Panel -->
+    <div id="verification-panel" class="auth-panel">
+        <div class="auth-title">Verify Your Email</div>
+        <p style="font-size: 0.95em; text-align: center; margin-bottom: 18px;">We've sent a 6-digit code to <strong id="verification-email-display"></strong>. Please enter it below.</p>
+        <form id="verify-form" style="width: 100%;">
+            <input type="text" id="verification-code" class="auth-input" placeholder="6-digit code" required maxlength="6" style="text-align: center; font-size: 1.2em; letter-spacing: 5px;">
+            <button type="submit" class="auth-provider-btn" style="width: 100%;">Verify and Sign In</button>
+        </form>
+        <div id="auth-notification-verify" class="auth-notification" role="alert"></div>
+        <div style="margin-top: 15px; font-size: 0.9em;">Didn't receive the code? <span id="resend-verification-code" class="auth-switch-link">Resend</span></div>
+    </div>
+
+    <!-- Floating Forgot Password Panel -->
+    <div id="forgot-password-panel" class="auth-panel">
+        <div class="auth-title">Reset Password</div>
+        <p style="font-size: 0.95em; text-align: center; margin-bottom: 18px;">Enter your email address and we'll send you a link to reset your password.</p>
+        <form id="forgot-password-form" style="width: 100%;">
+            <input type="email" id="forgot-password-email" class="auth-input" placeholder="Email address" required>
+            <button type="submit" class="auth-provider-btn" style="width: 100%;">Send Reset Link</button>
+        </form>
+        <div id="auth-notification-forgot" class="auth-notification" role="alert"></div>
+        <div id="forgot-password-success" class="auth-notification alert-success" role="alert" style="display: none;">
+            If an account with this email exists, you will receive a password reset link.
+        </div>
+        <div style="margin-top: 15px; font-size: 0.9em;">Remember your password? <span id="back-to-login-link" class="auth-switch-link">Back to Login</span></div>
     </div>
 
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -1692,8 +1775,18 @@
             // --- Auth Panel Logic ---
             const loginPanel = document.getElementById('login-panel');
             const registerPanel = document.getElementById('register-panel');
+            const verificationPanel = document.getElementById('verification-panel');
+            const forgotPasswordPanel = document.getElementById('forgot-password-panel');
             const toRegisterLink = document.getElementById('to-register-link');
-            const toLoginLink = document.getElementById('to-login-link');
+            const toLoginLinkFromRegister = document.getElementById('to-login-link-from-register');
+            const forgotPasswordLink = document.getElementById('forgot-password-link');
+            const backToLoginLink = document.getElementById('back-to-login-link');
+            let verificationEmail = ''; // Store email for verification
+
+            const loginNotification = document.getElementById('auth-notification-login');
+            const registerNotification = document.getElementById('auth-notification-register');
+            const verifyNotification = document.getElementById('auth-notification-verify');
+            const forgotNotification = document.getElementById('auth-notification-forgot');
 
             // Track login state
             let isLoggedIn = false;
@@ -1703,27 +1796,58 @@
             function showLoginPanel() {
                 loginPanel.classList.add('active');
                 registerPanel.classList.remove('active');
+                verificationPanel.classList.remove('active');
+                forgotPasswordPanel.classList.remove('active');
             }
             function showRegisterPanel() {
                 registerPanel.classList.add('active');
                 loginPanel.classList.remove('active');
+                verificationPanel.classList.remove('active');
+                forgotPasswordPanel.classList.remove('active');
+            }
+            function showVerificationPanel(email) {
+                verificationEmail = email;
+                document.getElementById('verification-email-display').textContent = email;
+                verificationPanel.classList.add('active');
+                loginPanel.classList.remove('active');
+                registerPanel.classList.remove('active');
+                forgotPasswordPanel.classList.remove('active');
+            }
+            function showForgotPasswordPanel() {
+                forgotPasswordPanel.classList.add('active');
+                loginPanel.classList.remove('active');
+                registerPanel.classList.remove('active');
+                verificationPanel.classList.remove('active');
+                // Pre-populate email from login form
+                const loginEmail = document.getElementById('login-email').value;
+                if (loginEmail) {
+                    document.getElementById('forgot-password-email').value = loginEmail;
+                }
             }
             function hideAuthPanels() {
                 loginPanel.classList.remove('active');
                 registerPanel.classList.remove('active');
+                verificationPanel.classList.remove('active');
+                forgotPasswordPanel.classList.remove('active');
+            }
+            
+            function showNotification(panel, message, type = 'danger') {
+                const notificationEl = document.getElementById(`auth-notification-${panel}`);
+                if (notificationEl) {
+                    notificationEl.textContent = message;
+                    notificationEl.className = `auth-notification alert-${type}`;
+                    notificationEl.style.display = 'block';
+                }
             }
 
-            function updatePersonalPanel(user) {
-                if (!personalSessionInfo) return;
-                if (user) {
-                    personalSessionInfo.innerHTML = `
-                        <div><strong>Email:</strong> ${user.email_masked || 'N/A'}</div>
-                        <div><strong>UID:</strong> ${user.user_uid || 'N/A'}</div>
-                        <div><strong>Auth:</strong> ${user.auth_type || 'N/A'}</div>
-                    `;
-                } else {
-                    personalSessionInfo.innerHTML = '<div style="color:#888;">Not logged in</div>';
-                }
+            function hideNotifications() {
+                 ['login', 'register', 'verify', 'forgot'].forEach(panel => {
+                    const notificationEl = document.getElementById(`auth-notification-${panel}`);
+                    if(notificationEl) notificationEl.style.display = 'none';
+                });
+                // Also hide the success message for forgot password
+                const forgotSuccessEl = document.getElementById('forgot-password-success');
+                if(forgotSuccessEl) forgotSuccessEl.style.display = 'none';
             }
 
             // Function to check login status
@@ -1738,8 +1862,24 @@
                         isLoggedIn = true;
                         currentUser = data.user;
                         hideAuthPanels();
-                        updatePersonalPanel(currentUser);
                         console.log('✅ User is logged in:', currentUser);
+                        
+                        // Update personal panel with user info
+                        const personalSessionInfo = document.getElementById('personalSessionInfo');
+                        if (personalSessionInfo) {
+                            personalSessionInfo.innerHTML = `
+                                <div style="margin-bottom: 8px;">
+                                    <strong>${currentUser.username || currentUser.email_masked || 'User'}</strong>
+                                </div>
+                                <div style="font-size: 0.9em; color: #888;">
+                                    ${currentUser.provider ? `via ${currentUser.provider}` : 'Email login'}
+                                </div>
+                                ${currentUser.email_masked ? `<div style="font-size: 0.85em; color: #666; margin-top: 4px;">${currentUser.email_masked}</div>` : ''}
+                            `;
+                        }
+                        
+                        // Check if user is admin and show admin link
+                        checkAdminStatus();
                         
                         // Show a success message or update UI
                         const welcomeMessage = document.querySelector('.welcome-message');
@@ -1750,7 +1890,20 @@
                     } else {
                         isLoggedIn = false;
                         currentUser = null;
-                        updatePersonalPanel(null);
+                        
+                        // Update personal panel for logged out state
+                        const personalSessionInfo = document.getElementById('personalSessionInfo');
+                        if (personalSessionInfo) {
+                            personalSessionInfo.innerHTML = `
+                                <div style="margin-bottom: 8px; color: #888;">
+                                    Not logged in
+                                </div>
+                                <div style="font-size: 0.9em; color: #666;">
+                                    Please login to access features
+                                </div>
+                            `;
+                        }
+                        
                         showLoginPanel();
                         console.log('❌ User is not logged in');
                     }
@@ -1758,8 +1911,60 @@
                     console.error('❌ Error checking login status:', error);
                     isLoggedIn = false;
                     currentUser = null;
-                    updatePersonalPanel(null);
+                    
+                    // Update personal panel for error state
+                    const personalSessionInfo = document.getElementById('personalSessionInfo');
+                    if (personalSessionInfo) {
+                        personalSessionInfo.innerHTML = `
+                            <div style="margin-bottom: 8px; color: #888;">
+                                Not logged in
+                            </div>
+                            <div style="font-size: 0.9em; color: #666;">
+                                Please login to access features
+                            </div>
+                        `;
+                    }
+                    
                     showLoginPanel();
+                }
+            }
+            
+            // Function to check if current user is admin
+            async function checkAdminStatus() {
+                try {
+                    if (!isLoggedIn || !currentUser) {
+                        // Hide admin link if not logged in
+                        const adminLinkContainer = document.getElementById('adminLinkContainer');
+                        if (adminLinkContainer) {
+                            adminLinkContainer.style.display = 'none';
+                        }
+                        return;
+                    }
+                    
+                    console.log('🔍 Checking admin status...');
+                    const response = await fetch('/admin', {
+                        method: 'HEAD' // Use HEAD to just check access without loading the page
+                    });
+                    
+                    const adminLinkContainer = document.getElementById('adminLinkContainer');
+                    if (adminLinkContainer) {
+                        if (response.ok) {
+                            // User is admin, show the link
+                            adminLinkContainer.style.display = 'block';
+                            console.log('✅ User has admin access');
+                        } else {
+                            // User is not admin, hide the link
+                            adminLinkContainer.style.display = 'none';
+                            console.log('❌ User does not have admin access');
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Error checking admin status:', error);
+                    // Hide admin link on error
+                    const adminLinkContainer = document.getElementById('adminLinkContainer');
+                    if (adminLinkContainer) {
+                        adminLinkContainer.style.display = 'none';
+                    }
                 }
             }
 
@@ -1790,8 +1995,150 @@
             // Also check session periodically to catch any auth state changes
             setInterval(checkLoginStatus, 30000); // Check every 30 seconds
             
-            toRegisterLink.addEventListener('click', showRegisterPanel);
-            toLoginLink.addEventListener('click', showLoginPanel);
+            toRegisterLink.addEventListener('click', () => {
+                hideNotifications();
+                showRegisterPanel();
+            });
+            toLoginLinkFromRegister.addEventListener('click', () => {
+                hideNotifications();
+                showLoginPanel();
+            });
+            forgotPasswordLink.addEventListener('click', () => {
+                hideNotifications();
+                showForgotPasswordPanel();
+            });
+            backToLoginLink.addEventListener('click', () => {
+                hideNotifications();
+                showLoginPanel();
+            });
+
+            // --- Handle Email Registration ---
+            document.getElementById('email-register-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideNotifications();
+                const email = document.getElementById('register-email').value;
+                const password = document.getElementById('register-password').value;
+                
+                try {
+                    const response = await fetch('/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        showVerificationPanel(data.email);
+                    } else {
+                        showNotification('register', data.error || 'Registration failed.');
+                    }
+                } catch (error) {
+                    showNotification('register', 'An error occurred during registration.');
+                }
+            });
+
+            // --- Handle Email Login ---
+            document.getElementById('email-login-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideNotifications();
+                const email = document.getElementById('login-email').value;
+                const password = document.getElementById('login-password').value;
+
+                try {
+                    const response = await fetch('/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        await checkLoginStatus(); // Re-check status to update UI and hide panels
+                    } else {
+                         if (data.email_not_verified) {
+                            showVerificationPanel(data.email);
+                        } else {
+                            showNotification('login', data.error || 'Login failed.');
+                        }
+                    }
+                } catch (error) {
+                    showNotification('login', 'An error occurred during login.');
+                }
+            });
+
+            // --- Handle Verification ---
+            document.getElementById('verify-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideNotifications();
+                const code = document.getElementById('verification-code').value;
+
+                try {
+                    const response = await fetch('/auth/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: verificationEmail, code })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        await checkLoginStatus(); // Re-check status to update UI and hide panels
+                    } else {
+                        showNotification('verify', data.error || 'Verification failed.');
+                    }
+                } catch (error) {
+                    showNotification('verify', 'An error occurred during verification.');
+                }
+            });
+            
+            // --- Handle Resend Code ---
+            document.getElementById('resend-verification-code').addEventListener('click', async (e) => {
+                e.preventDefault();
+                hideNotifications();
+                // This password is a placeholder, the backend just needs it to exist on the payload
+                const password = "dummy-password-for-resend";
+                try {
+                     const response = await fetch('/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: verificationEmail, password })
+                    });
+                     const data = await response.json();
+                     if(response.ok) {
+                        showNotification('verify', 'A new verification code has been sent.', 'success');
+                     } else {
+                        showNotification('verify', data.error || 'Failed to resend code.');
+                     }
+                } catch(err) {
+                    showNotification('verify', 'An error occurred while resending the code.');
+                }
+            });
+
+            // --- Handle Forgot Password ---
+            document.getElementById('forgot-password-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideNotifications();
+                const email = document.getElementById('forgot-password-email').value;
+
+                try {
+                    const response = await fetch('/auth/forgot-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        // Show success message
+                        const successEl = document.getElementById('forgot-password-success');
+                        if (successEl) {
+                            successEl.style.display = 'block';
+                        }
+                        // Clear the form
+                        document.getElementById('forgot-password-email').value = '';
+                    } else {
+                        showNotification('forgot', data.error || 'Failed to send reset email.');
+                    }
+                } catch (error) {
+                    showNotification('forgot', 'An error occurred. Please try again.');
+                }
+            });
 
             // --- Google Sign-In Integration ---
             function handleGoogleCredentialResponse(response) {
@@ -1900,7 +2247,7 @@
                 });
             }
             // If user clicks the custom Google button in login panel, trigger the Google sign-in
-            const customGoogleLoginBtn = document.getElementById('google-login-btn');
+            const customGoogleLoginBtn = document.getElementById('github-login-btn');
             if (customGoogleLoginBtn) {
                 customGoogleLoginBtn.addEventListener('click', function(e) {
                     e.preventDefault();
@@ -1960,7 +2307,20 @@
                         // Clear user state and show login panel
                         isLoggedIn = false;
                         currentUser = null;
-                        updatePersonalPanel(null);
+                        
+                        // Clear personal panel info
+                        const personalSessionInfo = document.getElementById('personalSessionInfo');
+                        if (personalSessionInfo) {
+                            personalSessionInfo.innerHTML = `
+                                <div style="margin-bottom: 8px; color: #888;">
+                                    Not logged in
+                                </div>
+                                <div style="font-size: 0.9em; color: #666;">
+                                    Please login to access features
+                                </div>
+                            `;
+                        }
+                        
                         // Clear localStorage
                         localStorage.removeItem('user');
                         // Reset welcome message
@@ -2539,6 +2899,169 @@
             }
 
             // Note: Dual research is now handled directly in form submission logic above
+        });
+
+        // Auth logic
+        document.addEventListener('DOMContentLoaded', function () {
+            // ... existing auth logic ...
+            const googleLoginBtn = document.getElementById('google-login-btn');
+            const githubLoginBtn = document.getElementById('github-login-btn');
+            const emailLoginBtn = document.getElementById('email-login-btn');
+
+            const authSelection = document.getElementById('auth-selection');
+            const emailLoginForm = document.getElementById('email-login-form');
+            const emailRegisterForm = document.getElementById('email-register-form');
+            const emailVerificationForm = document.getElementById('email-verification-form');
+            const authNotification = document.getElementById('auth-notification');
+
+            let verificationEmail = ''; // Store email for verification
+
+            function showNotification(message, type = 'danger') {
+                authNotification.textContent = message;
+                authNotification.className = `alert alert-${type}`;
+                authNotification.style.display = 'block';
+            }
+
+            function hideNotification() {
+                authNotification.style.display = 'none';
+            }
+            
+            function showForm(formElement) {
+                document.querySelectorAll('.auth-form, #auth-selection, .verification-form').forEach(el => el.classList.remove('active'));
+                formElement.classList.add('active');
+                hideNotification();
+            }
+
+            // Event Listeners for switching forms
+            emailLoginBtn.addEventListener('click', () => showForm(emailLoginForm));
+            document.getElementById('show-register-form').addEventListener('click', (e) => {
+                e.preventDefault();
+                showForm(emailRegisterForm);
+            });
+            document.getElementById('show-login-form').addEventListener('click', (e) => {
+                e.preventDefault();
+                showForm(emailLoginForm);
+            });
+            document.querySelectorAll('.back-to-auth-selection').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showForm(authSelection);
+                });
+            });
+
+            // Handle Registration
+            document.getElementById('register-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideNotification();
+                const email = document.getElementById('register-email').value;
+                const password = document.getElementById('register-password').value;
+                
+                try {
+                    const response = await fetch('/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        verificationEmail = data.email;
+                        document.getElementById('verification-email-display').textContent = verificationEmail;
+                        showForm(emailVerificationForm);
+                    } else {
+                        showNotification(data.error || 'Registration failed.');
+                    }
+                } catch (error) {
+                    showNotification('An error occurred during registration.');
+                }
+            });
+
+            // Handle Verification
+            document.getElementById('verify-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideNotification();
+                const code = document.getElementById('verification-code').value;
+
+                try {
+                    const response = await fetch('/auth/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: verificationEmail, code })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        showNotification('Login successful!', 'success');
+                        window.location.reload(); // Reload to update UI
+                    } else {
+                        showNotification(data.error || 'Verification failed.');
+                    }
+                } catch (error) {
+                    showNotification('An error occurred during verification.');
+                }
+            });
+
+            // Handle resending verification code
+            document.getElementById('resend-verification-code').addEventListener('click', async (e) => {
+                e.preventDefault();
+                hideNotification();
+                // We can re-use the register form's logic to resend.
+                // It's safe because the backend handles existing unverified users.
+                const password = "dummy-password-for-resend"; // Not used, but API expects it
+                try {
+                     const response = await fetch('/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: verificationEmail, password })
+                    });
+                     const data = await response.json();
+                     if(response.ok) {
+                        showNotification('A new verification code has been sent.', 'success');
+                     } else {
+                        showNotification(data.error || 'Failed to resend code.');
+                     }
+                } catch(err) {
+                    showNotification('An error occurred while resending the code.');
+                }
+            });
+
+            // Handle Login
+            document.getElementById('login-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideNotification();
+                const email = document.getElementById('login-email').value;
+                const password = document.getElementById('login-password').value;
+
+                try {
+                    const response = await fetch('/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        showNotification('Login successful!', 'success');
+                        window.location.reload();
+                    } else {
+                         if (data.email_not_verified) {
+                            verificationEmail = data.email;
+                            document.getElementById('verification-email-display').textContent = verificationEmail;
+                            showForm(emailVerificationForm);
+                            showNotification('Please verify your email address.', 'warning');
+                        } else {
+                            showNotification(data.error || 'Login failed.');
+                        }
+                    }
+                } catch (error) {
+                    showNotification('An error occurred during login.');
+                }
+            });
+
+
+            if (googleLoginBtn) {
+                // ... existing google login logic ...
+            }
+            if (githubLoginBtn) {
+                // ... existing github login logic ...
+            }
         });
     </script>
 </body>

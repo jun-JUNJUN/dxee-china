@@ -10,9 +10,10 @@ from app.handler.search_handler import SearchHandler
 from app.handler.health_handler import HealthHandler
 from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler, ChatStreamHandler
 from app.handler.main_handler import MainHandler, NotFoundHandler, FaviconHandler
-from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, GitHubOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler, SessionCheckHandler
+from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, GitHubOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler, SessionCheckHandler, EmailVerificationHandler, ForgotPasswordHandler, ResetPasswordHandler
 from app.handler.deep_search_handler import DeepSearchHandler, DeepSearchStreamHandler, DeepSearchWebSocketHandler
 from app.handler.dual_research_handler import DualResearchHandler, DualResearchWebSocketHandler
+from app.handler.admin_handler import AdminHandler
 from app.service.deepseek_service import DeepSeekService
 from app.service.mongodb_service import MongoDBService
 
@@ -60,6 +61,9 @@ class Application(tornado.web.Application):
             (r"/auth/register", RegisterHandler),
             (r"/auth/login", LoginHandler),
             (r"/auth/logout", LogoutHandler),
+            (r"/auth/verify", EmailVerificationHandler),
+            (r"/auth/forgot-password", ForgotPasswordHandler),
+            (r"/auth/reset-password", ResetPasswordHandler),
             (r"/auth/google", GoogleOAuthHandler),
             (r"/auth/google/callback", GoogleOAuthHandler),
             (r"/auth/github", GitHubOAuthHandler),
@@ -68,6 +72,7 @@ class Application(tornado.web.Application):
             (r"/auth/apple", AppleOAuthHandler),
             (r"/auth/profile", UserProfileHandler),
             (r"/auth/session", SessionCheckHandler),
+            (r"/admin", AdminHandler),  # Admin dashboard
             (r"/favicon.ico", FaviconHandler),  # Favicon handler
             (r"/", MainHandler),  # Main page handler
         ]
