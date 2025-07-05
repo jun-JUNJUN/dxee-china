@@ -551,8 +551,10 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
+            justify-content: flex-start;
+            padding: 20px 8px;
+            overflow-y: auto;
         }
         .sidebar-footer {
             display: flex;
@@ -601,6 +603,123 @@
         }
         .logout-btn:hover {
             background: #b52a37;
+        }
+        /* New Chat Button */
+        .new-chat-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            background: #ff9776;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 12px 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .new-chat-btn:hover {
+            background: #ff8759;
+            transform: translateY(-1px);
+        }
+        .new-chat-btn:active {
+            transform: translateY(0);
+        }
+        .new-chat-icon {
+            font-size: 18px;
+            margin-right: 6px;
+        }
+        .new-chat-text {
+            font-size: 14px;
+        }
+        /* Chat History Container */
+        .chat-history-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            flex: 1;
+        }
+        .chat-history-header {
+            font-size: 12px;
+            font-weight: 600;
+            color: #b8c5d6;
+            margin-bottom: 10px;
+            padding: 0 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .chat-history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .chat-history-item {
+            background: #232526;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 10px 8px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .chat-history-item:hover {
+            background: #2a2d2e;
+            border-color: #444;
+        }
+        .chat-history-item.active {
+            background: #ff9776;
+            border-color: #ff9776;
+        }
+        .chat-history-item.active:hover {
+            background: #ff8759;
+            border-color: #ff8759;
+        }
+        .chat-history-item-text {
+            font-size: 12px;
+            color: #e0e0e0;
+            line-height: 1.3;
+            word-wrap: break-word;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+        .chat-history-item.active .chat-history-item-text {
+            color: #fff;
+        }
+        /* Sidebar responsiveness for new elements */
+        .sidebar.closed .new-chat-text,
+        .sidebar.closed .chat-history-header,
+        .sidebar.closed .chat-history-item-text {
+            display: none;
+        }
+        .sidebar.closed .new-chat-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            padding: 0;
+            margin-bottom: 12px;
+        }
+        .sidebar.closed .new-chat-icon {
+            margin-right: 0;
+            font-size: 16px;
+        }
+        .sidebar.closed .chat-history-item {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sidebar.closed .chat-history-item-text {
+            display: none;
         }
         /* Adjust main container for sidebar */
         .sidebar.closed ~ .container {
@@ -662,7 +781,16 @@
                 <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Close sidebar">&#x25C0;</button>
             </div>
             <div class="sidebar-content">
-                <!-- You can add navigation icons here if needed -->
+                <button class="new-chat-btn" id="newChatBtn" title="Start new chat">
+                    <span class="new-chat-icon">+</span>
+                    <span class="new-chat-text">New Chat</span>
+                </button>
+                <div class="chat-history-container" id="chatHistoryContainer">
+                    <div class="chat-history-header">Recent Chats</div>
+                    <div class="chat-history-list" id="chatHistoryList">
+                        <!-- Chat history items will be dynamically added here -->
+                    </div>
+                </div>
             </div>
         </div>
         <div class="sidebar-footer">
@@ -862,6 +990,158 @@
                     return null;
                 }
             }
+
+            // Function to load user's chat list
+            async function loadUserChats() {
+                try {
+                    const response = await fetch('/chat/user?limit=10');
+                    
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    
+                    const data = await response.json();
+                    return data.chats || [];
+                } catch (error) {
+                    console.error('Error loading user chats:', error);
+                    return [];
+                }
+            }
+
+            // Function to display chat history in sidebar
+            async function displayChatHistory() {
+                const chatHistoryList = document.getElementById('chatHistoryList');
+                
+                if (!chatHistoryList) {
+                    console.error('Chat history list element not found');
+                    return;
+                }
+
+                try {
+                    const chats = await loadUserChats();
+                    
+                    // Clear existing chat history
+                    chatHistoryList.innerHTML = '';
+                    
+                    if (chats.length === 0) {
+                        chatHistoryList.innerHTML = '<div style="color: #888; font-size: 11px; text-align: center; padding: 10px;">No chats yet</div>';
+                        return;
+                    }
+                    
+                    // Create chat history items
+                    chats.forEach(chat => {
+                        const chatItem = document.createElement('div');
+                        chatItem.className = 'chat-history-item';
+                        chatItem.dataset.chatId = chat.chat_id;
+                        
+                        // Check if this is the active chat
+                        if (chat.chat_id === currentChatId) {
+                            chatItem.classList.add('active');
+                        }
+                        
+                        const chatText = document.createElement('div');
+                        chatText.className = 'chat-history-item-text';
+                        
+                        // Get the first message content and truncate to 30 characters
+                        let displayText = 'New Chat';
+                        if (chat.messages && chat.messages.length > 0) {
+                            const firstMessage = chat.messages.find(msg => msg.sender === 'user');
+                            if (firstMessage && firstMessage.content) {
+                                displayText = firstMessage.content.substring(0, 30);
+                                if (firstMessage.content.length > 30) {
+                                    displayText += '...';
+                                }
+                            }
+                        }
+                        
+                        chatText.textContent = displayText;
+                        chatItem.appendChild(chatText);
+                        
+                        // Add click handler
+                        chatItem.addEventListener('click', () => {
+                            switchToChat(chat.chat_id);
+                        });
+                        
+                        chatHistoryList.appendChild(chatItem);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error displaying chat history:', error);
+                    chatHistoryList.innerHTML = '<div style="color: #ff6b6b; font-size: 11px; text-align: center; padding: 10px;">Error loading chats</div>';
+                }
+            }
+
+            // Function to switch to a specific chat
+            async function switchToChat(chatId) {
+                try {
+                    // Update current chat ID
+                    currentChatId = chatId;
+                    
+                    // Update active state in sidebar
+                    const chatItems = document.querySelectorAll('.chat-history-item');
+                    chatItems.forEach(item => {
+                        if (item.dataset.chatId === chatId) {
+                            item.classList.add('active');
+                        } else {
+                            item.classList.remove('active');
+                        }
+                    });
+                    
+                    // Clear current chat messages
+                    chatMessages.innerHTML = '';
+                    
+                    // Show chat screen if not already shown
+                    if (welcomeScreen.style.display !== 'none') {
+                        welcomeScreen.style.display = 'none';
+                        chatScreen.style.display = 'block';
+                    }
+                    
+                    // Load and display chat history
+                    const chatData = await getChatHistory(chatId);
+                    if (chatData && chatData.messages) {
+                        chatData.messages.forEach(msg => {
+                            displayMessage(msg.content, msg.sender);
+                        });
+                        
+                        // Scroll to bottom
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                    
+                } catch (error) {
+                    console.error('Error switching to chat:', error);
+                }
+            }
+
+            // Function to start a new chat
+            function startNewChat() {
+                // Clear current chat ID
+                currentChatId = null;
+                
+                // Clear active state from all chat items
+                const chatItems = document.querySelectorAll('.chat-history-item');
+                chatItems.forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                // Clear chat messages
+                chatMessages.innerHTML = '';
+                
+                // Show welcome screen
+                welcomeScreen.style.display = 'block';
+                chatScreen.style.display = 'none';
+                
+                // Reset search mode to default
+                currentSearchMode = 'search';
+                
+                // Update search mode buttons in welcome screen
+                const welcomeButtons = document.querySelectorAll('#welcome-screen .selectable-btn');
+                welcomeButtons.forEach(btn => {
+                    btn.classList.remove('selected', 'disabled');
+                    if (btn.dataset.mode === 'search') {
+                        btn.classList.add('selected');
+                    }
+                });
+            }
             
             // Function to create a search form
             function createSearchForm() {
@@ -1031,6 +1311,9 @@
                             
                             // Scroll to the bottom
                             chatMessages.scrollTop = chatMessages.scrollHeight;
+                            
+                            // Refresh chat history
+                            displayChatHistory();
                         }
                     }).catch(error => {
                         console.error('Error processing search:', error);
@@ -1348,6 +1631,18 @@
                 }
             });
             
+            // New Chat button event handler
+            const newChatBtn = document.getElementById('newChatBtn');
+            if (newChatBtn) {
+                newChatBtn.addEventListener('click', function() {
+                    console.log('New chat button clicked');
+                    startNewChat();
+                });
+            }
+            
+            // Load chat history when page loads
+            displayChatHistory();
+            
             // Function to get recent chat history from DOM (up to 2 previous exchanges)
             function getRecentChatHistory(maxExchanges = 2) {
                 const messages = chatMessages.querySelectorAll('.message');
@@ -1479,6 +1774,8 @@
                                     
                                     if (data.type === 'chat_id') {
                                         currentChatId = data.chat_id;
+                                        // Refresh chat history when new chat is created
+                                        displayChatHistory();
                                     } else if (data.type === 'reasoning_chunk') {
                                         // Handle reasoning content chunks with enhanced visual indicators
                                         if (!messageDiv.querySelector('.reasoning-section')) {
@@ -2377,6 +2674,11 @@
                     
                     if (results.status === 'success') {
                         displayDualResearchResults(results);
+                        // Refresh chat history if a new chat was created
+                        if (results.chat_id) {
+                            currentChatId = results.chat_id;
+                            displayChatHistory();
+                        }
                     } else {
                         showDualResearchError(results.message || 'Unknown error');
                     }
