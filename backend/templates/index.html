@@ -551,8 +551,73 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
+            padding: 10px 5px;
+        }
+        .sidebar.closed .sidebar-content {
+            display: none;
+        }
+        .chat-history-section {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .chat-history-header {
+            font-size: 12px;
+            font-weight: 600;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .chat-history-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .chat-history-item {
+            margin-bottom: 8px;
+            cursor: pointer;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: #232526;
+            border: 1px solid #333;
+            transition: all 0.2s ease;
+        }
+        .chat-history-item:hover {
+            background: #2a2d2e;
+            border-color: #00bcd4;
+        }
+        .chat-history-item.active {
+            background: #00bcd4;
+            border-color: #00bcd4;
+            color: #000;
+        }
+        .chat-history-item-title {
+            font-size: 11px;
+            font-weight: 500;
+            color: #e0e0e0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.3;
+        }
+        .chat-history-item.active .chat-history-item-title {
+            color: #000;
+        }
+        .chat-history-item-date {
+            font-size: 9px;
+            color: #888;
+            margin-top: 2px;
+        }
+        .chat-history-item.active .chat-history-item-date {
+            color: #333;
+        }
+        .chat-history-loading {
+            text-align: center;
+            color: #888;
+            font-size: 11px;
+            padding: 20px 10px;
         }
         .sidebar-footer {
             display: flex;
@@ -662,7 +727,11 @@
                 <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Close sidebar">&#x25C0;</button>
             </div>
             <div class="sidebar-content">
-                <!-- You can add navigation icons here if needed -->
+                <div class="chat-history-section">
+                    <div class="chat-history-header">Recent Chats</div>
+                    <div id="chat-history-loading" class="chat-history-loading">Loading...</div>
+                    <ul id="chat-history-list" class="chat-history-list" style="display: none;"></ul>
+                </div>
             </div>
         </div>
         <div class="sidebar-footer">
@@ -1739,6 +1808,11 @@
                                         }
                                         
                                         chatMessages.scrollTop = chatMessages.scrollHeight;
+                                        
+                                        // Refresh chat history to show the new conversation
+                                        if (isLoggedIn) {
+                                            refreshChatHistory();
+                                        }
                                         break;
                                     } else if (data.type === 'error') {
                                         contentDiv.textContent = 'Error: ' + data.content;
@@ -1881,6 +1955,9 @@
                         // Check if user is admin and show admin link
                         checkAdminStatus();
                         
+                        // Load chat history when user is logged in
+                        loadChatHistoryOnLogin();
+                        
                         // Show a success message or update UI
                         const welcomeMessage = document.querySelector('.welcome-message');
                         if (welcomeMessage) {
@@ -1904,6 +1981,9 @@
                             `;
                         }
                         
+                        // Show not logged in state in chat history
+                        loadChatHistoryOnLogin();
+                        
                         showLoginPanel();
                         console.log('❌ User is not logged in');
                     }
@@ -1924,6 +2004,9 @@
                             </div>
                         `;
                     }
+                    
+                    // Show not logged in state in chat history
+                    loadChatHistoryOnLogin();
                     
                     showLoginPanel();
                 }
@@ -2343,6 +2426,153 @@
                     alert('Logout failed: ' + e.message);
                 }
             });
+
+            // Chat History functionality
+            let chatHistoryCache = [];
+            
+            // Function to fetch user's chat history
+            async function fetchChatHistory() {
+                try {
+                    const response = await fetch('/chat/user?limit=10&skip=0');
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch chat history');
+                    }
+                    const data = await response.json();
+                    return data.chats || [];
+                } catch (error) {
+                    console.error('Error fetching chat history:', error);
+                    return [];
+                }
+            }
+            
+            // Function to display chat history in sidebar
+            function displayChatHistory(chats) {
+                const loadingDiv = document.getElementById('chat-history-loading');
+                const listDiv = document.getElementById('chat-history-list');
+                
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                if (listDiv) listDiv.style.display = 'block';
+                
+                if (!chats || chats.length === 0) {
+                    listDiv.innerHTML = '<li style="text-align: center; color: #888; font-size: 11px; padding: 20px 10px;">No chat history</li>';
+                    return;
+                }
+                
+                listDiv.innerHTML = '';
+                chats.forEach((chat, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'chat-history-item';
+                    li.dataset.chatId = chat.chat_id;
+                    
+                    // Truncate title to 30 characters as requested
+                    const title = chat.title ? (chat.title.length > 30 ? chat.title.substring(0, 30) + '...' : chat.title) : 'New Chat';
+                    
+                    // Format date
+                    const date = chat.updated_at ? new Date(chat.updated_at).toLocaleDateString() : new Date(chat.created_at).toLocaleDateString();
+                    
+                    li.innerHTML = `
+                        <div class="chat-history-item-title">${title}</div>
+                        <div class="chat-history-item-date">${date}</div>
+                    `;
+                    
+                    // Add click handler to load chat
+                    li.addEventListener('click', () => loadChatHistory(chat.chat_id, li));
+                    
+                    listDiv.appendChild(li);
+                });
+            }
+            
+            // Function to load a specific chat history
+            async function loadChatHistory(chatId, itemElement) {
+                try {
+                    // Update UI to show active chat
+                    document.querySelectorAll('.chat-history-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    if (itemElement) {
+                        itemElement.classList.add('active');
+                    }
+                    
+                    // Set current chat ID
+                    currentChatId = chatId;
+                    
+                    // Fetch chat messages
+                    const response = await fetch(`/chat/history/${chatId}`);
+                    if (!response.ok) {
+                        throw new Error('Failed to load chat history');
+                    }
+                    
+                    const data = await response.json();
+                    const messages = data.messages || [];
+                    
+                    // Clear current chat messages
+                    const chatMessages = document.getElementById('chat-messages');
+                    if (chatMessages) {
+                        chatMessages.innerHTML = '';
+                    }
+                    
+                    // Show chat screen and hide welcome screen
+                    showChatScreen();
+                    
+                    // Display all messages
+                    messages.forEach(message => {
+                        if (message.type === 'user') {
+                            addUserMessage(message.message);
+                        } else if (message.type === 'assistant') {
+                            addAIMessage(message.message, message.search_results || []);
+                        }
+                    });
+                    
+                    // Scroll to bottom
+                    if (chatMessages) {
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                    
+                } catch (error) {
+                    console.error('Error loading chat history:', error);
+                    alert('Failed to load chat history: ' + error.message);
+                }
+            }
+            
+            // Function to load chat history on page load (only if logged in)
+            async function loadChatHistoryOnLogin() {
+                if (!isLoggedIn) {
+                    // Show not logged in state
+                    const loadingDiv = document.getElementById('chat-history-loading');
+                    const listDiv = document.getElementById('chat-history-list');
+                    if (loadingDiv) {
+                        loadingDiv.textContent = 'Please log in';
+                        loadingDiv.style.display = 'block';
+                    }
+                    if (listDiv) {
+                        listDiv.style.display = 'none';
+                    }
+                    return;
+                }
+                
+                try {
+                    const chats = await fetchChatHistory();
+                    chatHistoryCache = chats;
+                    displayChatHistory(chats);
+                } catch (error) {
+                    console.error('Error loading initial chat history:', error);
+                    const loadingDiv = document.getElementById('chat-history-loading');
+                    if (loadingDiv) {
+                        loadingDiv.textContent = 'Failed to load';
+                    }
+                }
+            }
+            
+            // Function to refresh chat history (e.g., after sending a new message)
+            async function refreshChatHistory() {
+                try {
+                    const chats = await fetchChatHistory();
+                    chatHistoryCache = chats;
+                    displayChatHistory(chats);
+                } catch (error) {
+                    console.error('Error refreshing chat history:', error);
+                }
+            }
 
             // Dual Research functionality for Google Deep button
             let isDualResearching = false;
