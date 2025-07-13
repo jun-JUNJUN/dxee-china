@@ -853,7 +853,7 @@
                 <div class="chat-history-section">
                     <div class="chat-history-header">Recent Chats</div>
                     <div id="chat-history-loading" class="chat-history-loading">Loading...</div>
-                    <ul id="chat-history-list" class="chat-history-list" style="display: none;"></ul>
+                    <ul id="chatHistoryList" class="chat-history-list" style="display: none;"></ul>
                 </div>
             </div>
         </div>
@@ -1155,16 +1155,18 @@
                     chatMessages.innerHTML = '';
                     
                     // Show chat screen if not already shown
-                    if (welcomeScreen.style.display !== 'none') {
-                        welcomeScreen.style.display = 'none';
-                        chatScreen.style.display = 'block';
-                    }
+                    welcomeScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
                     
                     // Load and display chat history
                     const chatData = await getChatHistory(chatId);
                     if (chatData && chatData.messages) {
                         chatData.messages.forEach(msg => {
-                            displayMessage(msg.content, msg.sender);
+                            if (msg.type === 'user') {
+                                addUserMessage(msg.message);
+                            } else if (msg.type === 'assistant') {
+                                addAIMessage(msg.message, msg.search_results || []);
+                            }
                         });
                         
                         // Scroll to bottom
@@ -1191,8 +1193,8 @@
                 chatMessages.innerHTML = '';
                 
                 // Show welcome screen
-                welcomeScreen.style.display = 'block';
-                chatScreen.style.display = 'none';
+                welcomeScreen.classList.remove('hidden');
+                chatScreen.classList.add('hidden');
                 
                 // Reset search mode to default
                 currentSearchMode = 'search';
@@ -1375,9 +1377,6 @@
                             
                             // Scroll to the bottom
                             chatMessages.scrollTop = chatMessages.scrollHeight;
-                            
-                            // Refresh chat history
-                            displayChatHistory();
                         }
                     }).catch(error => {
                         console.error('Error processing search:', error);
@@ -1480,6 +1479,94 @@
                 
                 // Scroll to the bottom
                 chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // Function to add user message to chat
+            function addUserMessage(message) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message user-message';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon';
+                iconSpan.textContent = 'You';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                // Format user messages as plain text (they are typically simple queries)
+                contentDiv.textContent = message;
+                
+                headerDiv.appendChild(iconSpan);
+                messageDiv.appendChild(headerDiv);
+                messageDiv.appendChild(contentDiv);
+                
+                chatMessages.appendChild(messageDiv);
+            }
+            
+            // Function to add AI message to chat
+            function addAIMessage(message, searchResults = []) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message ai-message';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-icon ai-icon';
+                iconSpan.textContent = '✨';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = 'AI';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                // Format AI messages using markdown parser, same as streaming messages
+                try {
+                    contentDiv.innerHTML = marked.parse(message);
+                    contentDiv.classList.add('formatted');
+                    
+                    // Highlight code blocks
+                    contentDiv.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+                } catch (e) {
+                    console.warn('Failed to parse markdown, using plain text:', e);
+                    contentDiv.textContent = message;
+                }
+                
+                headerDiv.appendChild(iconSpan);
+                headerDiv.appendChild(nameSpan);
+                messageDiv.appendChild(headerDiv);
+                messageDiv.appendChild(contentDiv);
+                
+                // Add search results if available
+                if (searchResults && searchResults.length > 0) {
+                    const resultsDiv = document.createElement('div');
+                    resultsDiv.className = 'search-results';
+                    
+                    searchResults.forEach(result => {
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'result-item';
+                        
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'result-title';
+                        titleDiv.textContent = result.title || 'Untitled';
+                        
+                        const contentDiv = document.createElement('div');
+                        contentDiv.className = 'result-content';
+                        contentDiv.textContent = result.content || result.snippet || '';
+                        
+                        resultItem.appendChild(titleDiv);
+                        resultItem.appendChild(contentDiv);
+                        resultsDiv.appendChild(resultItem);
+                    });
+                    
+                    messageDiv.appendChild(resultsDiv);
+                }
+                
+                chatMessages.appendChild(messageDiv);
             }
             
             // Initialize the UI for the welcome screen form
@@ -1837,9 +1924,13 @@
                                     const data = JSON.parse(jsonStr);
                                     
                                     if (data.type === 'chat_id') {
+                                        // Only refresh chat history if this is a new chat (currentChatId was null)
+                                        const isNewChat = currentChatId === null;
                                         currentChatId = data.chat_id;
-                                        // Refresh chat history when new chat is created
-                                        displayChatHistory();
+                                        if (isNewChat) {
+                                            // Refresh chat history when new chat is created
+                                            displayChatHistory();
+                                        }
                                     } else if (data.type === 'reasoning_chunk') {
                                         // Handle reasoning content chunks with enhanced visual indicators
                                         if (!messageDiv.querySelector('.reasoning-section')) {
@@ -2100,11 +2191,6 @@
                                         }
                                         
                                         chatMessages.scrollTop = chatMessages.scrollHeight;
-                                        
-                                        // Refresh chat history to show the new conversation
-                                        if (isLoggedIn) {
-                                            refreshChatHistory();
-                                        }
                                         break;
                                     } else if (data.type === 'error') {
                                         contentDiv.textContent = 'Error: ' + data.content;
@@ -2740,7 +2826,7 @@
             // Function to display chat history in sidebar
             function displayChatHistory(chats) {
                 const loadingDiv = document.getElementById('chat-history-loading');
-                const listDiv = document.getElementById('chat-history-list');
+                const listDiv = document.getElementById('chatHistoryList');
                 
                 if (loadingDiv) loadingDiv.style.display = 'none';
                 if (listDiv) listDiv.style.display = 'block';
@@ -2804,7 +2890,8 @@
                     }
                     
                     // Show chat screen and hide welcome screen
-                    showChatScreen();
+                    welcomeScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
                     
                     // Display all messages
                     messages.forEach(message => {
@@ -2831,7 +2918,7 @@
                 if (!isLoggedIn) {
                     // Show not logged in state
                     const loadingDiv = document.getElementById('chat-history-loading');
-                    const listDiv = document.getElementById('chat-history-list');
+                    const listDiv = document.getElementById('chatHistoryList');
                     if (loadingDiv) {
                         loadingDiv.textContent = 'Please log in';
                         loadingDiv.style.display = 'block';
