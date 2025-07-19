@@ -64,6 +64,8 @@ from collections import defaultdict
 try:
     import aiohttp
     import tiktoken  # For token counting
+    import urllib.request
+    import ssl
 except ImportError as e:
     print(f"❌ Missing required libraries: {e}")
     print("📦 Please install: pip install aiohttp tiktoken")
@@ -336,6 +338,577 @@ Updated Answer:"""
             ]
         }
 
+@dataclass
+class OptimizedResearchSession:
+    """Track optimized research session with time and token constraints"""
+    session_id: str
+    question: str
+    start_time: float
+    max_duration: int = 600  # 10 minutes
+    target_sources: int = 10
+    max_tokens_per_request: int = 50000
+    
+    # Progress tracking
+    current_phase: str = "initialization"
+    sources_processed: int = 0
+    tokens_used: int = 0
+    cache_hits: int = 0
+    
+    # Results
+    progressive_answer: str = ""
+    confidence_score: float = 0.0
+    completion_status: str = "in_progress"  # in_progress, completed, time_limited
+
+@dataclass
+class OptimizedSource:
+    """Enhanced source with optimization metadata"""
+    url: str
+    title: str
+    content: str
+    priority_score: float
+    token_count: int
+    extraction_time: float
+    quality_score: int
+    relevance_score: float
+    from_cache: bool = False
+    
+    # Optimization metadata
+    original_length: int = 0
+    summarized: bool = False
+    processing_priority: int = 0
+
+class TimeManager:
+    """Enforce strict time limits and coordinate early termination"""
+    
+    def __init__(self, max_duration: int = 600):
+        self.max_duration = max_duration
+        self.start_time = None
+        self.phase_budgets = {
+            "query_generation": 30,      # 5%
+            "web_search": 60,           # 10%
+            "content_extraction": 360,   # 60%
+            "analysis": 120,            # 20%
+            "summary_generation": 30     # 5%
+        }
+        
+    def start_timer(self) -> float:
+        """Initialize research timer"""
+        self.start_time = time.time()
+        logger.info(f"⏰ Timer started - {self.max_duration}s limit")
+        return self.start_time
+        
+    def check_time_remaining(self) -> int:
+        """Get remaining time in seconds"""
+        if self.start_time is None:
+            return self.max_duration
+        elapsed = time.time() - self.start_time
+        return max(0, int(self.max_duration - elapsed))
+        
+    def should_terminate(self) -> bool:
+        """Check if early termination needed (8-minute mark)"""
+        if self.start_time is None:
+            return False
+        elapsed = time.time() - self.start_time
+        return elapsed >= (self.max_duration - 120)  # 8 minutes
+        
+    def get_phase_time_budget(self, phase: str) -> int:
+        """Allocate time per phase"""
+        return self.phase_budgets.get(phase, 60)
+        
+    def is_phase_time_exceeded(self, phase: str, phase_start: float) -> bool:
+        """Check if phase time budget exceeded"""
+        phase_elapsed = time.time() - phase_start
+        phase_budget = self.get_phase_time_budget(phase)
+        return phase_elapsed >= phase_budget
+
+class TokenOptimizer:
+    """Manage content size and prevent API token limit errors"""
+    
+    def __init__(self, max_tokens: int = 50000):
+        self.max_tokens = max_tokens
+        self.encoding = None
+        try:
+            self.encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        except:
+            logger.warning("⚠️ Could not load tiktoken encoding, using estimation")
+    
+    def count_tokens(self, text: str) -> int:
+        """Accurate token counting"""
+        if self.encoding:
+            try:
+                return len(self.encoding.encode(text))
+            except:
+                pass
+        # Fallback estimation
+        return len(text) // 4
+    
+    def count_total_tokens(self, sources: List[Dict[str, Any]]) -> int:
+        """Count total tokens across all sources"""
+        total = 0
+        for source in sources:
+            content = source.get('content', '')
+            total += self.count_tokens(content)
+        return total
+    
+    def optimize_content(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Intelligent content reduction"""
+        if not sources:
+            return sources
+            
+        total_tokens = self.count_total_tokens(sources)
+        if total_tokens <= self.max_tokens:
+            return sources
+            
+        logger.info(f"🔧 Optimizing content: {total_tokens} -> target {self.max_tokens} tokens")
+        
+        # Priority-based selection and summarization
+        optimized = []
+        remaining_tokens = self.max_tokens
+        
+        # Sort by priority (quality * relevance)
+        sorted_sources = sorted(sources, 
+                              key=lambda s: (s.get('domain_info', {}).get('quality_score', 5) * 
+                                           s.get('relevance_score', 0.5)), 
+                              reverse=True)
+        
+        for source in sorted_sources:
+            content = source.get('content', '')
+            content_tokens = self.count_tokens(content)
+            
+            if content_tokens <= remaining_tokens:
+                optimized.append(source)
+                remaining_tokens -= content_tokens
+            elif remaining_tokens > 500:  # Minimum viable content
+                # Summarize to fit
+                summarized_source = self.summarize_source(source, remaining_tokens - 100)
+                if summarized_source:
+                    optimized.append(summarized_source)
+                    remaining_tokens -= self.count_tokens(summarized_source.get('content', ''))
+            
+            if remaining_tokens <= 100:
+                break
+                
+        logger.info(f"📊 Optimized to {len(optimized)}/{len(sources)} sources, ~{self.count_total_tokens(optimized)} tokens")
+        return optimized
+    
+    def summarize_source(self, source: Dict[str, Any], target_tokens: int) -> Optional[Dict[str, Any]]:
+        """Smart content summarization"""
+        content = source.get('content', '')
+        if not content:
+            return None
+            
+        # Calculate target length (rough estimation: 1 token = 4 chars)
+        target_length = target_tokens * 4
+        
+        if len(content) <= target_length:
+            return source
+            
+        # Intelligent summarization - keep key sections
+        lines = content.split('\n')
+        important_lines = []
+        
+        # Keep lines with numbers, statistics, or key terms
+        key_indicators = ['percent', '%', 'million', 'billion', 'users', 'revenue', 'market', 'growth']
+        
+        for line in lines:
+            line_lower = line.lower()
+            if (any(indicator in line_lower for indicator in key_indicators) or
+                any(char.isdigit() for char in line) or
+                len(line.strip()) > 50):  # Substantial content
+                important_lines.append(line)
+                
+        # If we have important lines, use them
+        if important_lines:
+            summarized_content = '\n'.join(important_lines)
+        else:
+            # Fallback: take beginning and end
+            mid_point = len(content) // 2
+            first_half = content[:target_length//2]
+            second_half = content[mid_point:mid_point + target_length//2]
+            summarized_content = first_half + '\n...\n' + second_half
+            
+        # Ensure we don't exceed target
+        if len(summarized_content) > target_length:
+            summarized_content = summarized_content[:target_length] + "..."
+            
+        summarized_source = source.copy()
+        summarized_source['content'] = summarized_content
+        summarized_source['summarized'] = True
+        summarized_source['original_length'] = len(content)
+        
+        return summarized_source
+    
+    def batch_content(self, sources: List[Dict[str, Any]], batch_size: int = None) -> List[List[Dict[str, Any]]]:
+        """Split into processable batches"""
+        if batch_size is None:
+            # Determine batch size based on token limits
+            avg_tokens = self.count_total_tokens(sources) / len(sources) if sources else 1000
+            batch_size = max(1, int(self.max_tokens // avg_tokens))
+            
+        batches = []
+        for i in range(0, len(sources), batch_size):
+            batch = sources[i:i + batch_size]
+            batches.append(batch)
+            
+        logger.info(f"📦 Split into {len(batches)} batches (max {batch_size} sources each)")
+        return batches
+
+class ContentPrioritizer:
+    """Rank and prioritize sources for optimal resource utilization"""
+    
+    def __init__(self):
+        self.domain_quality_cache = {}
+        
+    def calculate_priority_score(self, source: Dict[str, Any]) -> float:
+        """Multi-factor scoring"""
+        domain_quality = source.get('domain_info', {}).get('quality_score', 5) / 10.0  # 40%
+        relevance = source.get('relevance_score', 0.5)  # 30%
+        cache_bonus = 0.2 if source.get('from_cache', False) else 0.0  # 20%
+        
+        # Content quality ratio - length vs quality (10%)
+        content_length = len(source.get('content', ''))
+        quality_ratio = min(1.0, content_length / 1000) * 0.1  # Normalize to 1000 chars
+        
+        priority = (domain_quality * 0.4 + 
+                   relevance * 0.3 + 
+                   cache_bonus + 
+                   quality_ratio)
+                   
+        return min(1.0, priority)
+    
+    def rank_sources(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort by priority"""
+        for source in sources:
+            source['priority_score'] = self.calculate_priority_score(source)
+            
+        return sorted(sources, key=lambda s: s['priority_score'], reverse=True)
+    
+    def filter_by_time_budget(self, sources: List[Dict[str, Any]], time_remaining: int) -> List[Dict[str, Any]]:
+        """Time-aware filtering"""
+        if time_remaining <= 0:
+            return []
+            
+        # Estimate processing time per source (rough: 30-60 seconds each)
+        avg_processing_time = 45
+        max_sources = max(1, time_remaining // avg_processing_time)
+        
+        ranked_sources = self.rank_sources(sources)
+        filtered = ranked_sources[:max_sources]
+        
+        logger.info(f"⏱️ Time budget: {time_remaining}s allows ~{max_sources} sources (filtered {len(sources)} -> {len(filtered)})")
+        return filtered
+
+class ProgressiveResponseGenerator:
+    """Build and update responses incrementally as data becomes available"""
+    
+    def __init__(self):
+        self.response_state = {}
+        
+    def initialize_response(self, question: str) -> Dict[str, Any]:
+        """Set up progressive tracking"""
+        session_id = f"session_{int(time.time())}"
+        self.response_state[session_id] = {
+            'question': question,
+            'current_answer': "🔍 Research initiated...",
+            'confidence': 0.0,
+            'sources_count': 0,
+            'last_update': time.time(),
+            'findings': []
+        }
+        return {'session_id': session_id}
+    
+    def update_with_sources(self, session_id: str, sources: List[Dict[str, Any]]) -> bool:
+        """Incorporate new findings"""
+        if session_id not in self.response_state:
+            return False
+            
+        state = self.response_state[session_id]
+        successful_sources = [s for s in sources if s.get('success', False)]
+        
+        if not successful_sources:
+            return False
+            
+        # Update state
+        state['sources_count'] += len(successful_sources)
+        state['last_update'] = time.time()
+        
+        # Add key findings
+        for source in successful_sources[:3]:  # Top 3 sources
+            finding = {
+                'title': source.get('title', 'Unknown'),
+                'url': source.get('url', ''),
+                'key_content': source.get('content', '')[:200] + "..." if len(source.get('content', '')) > 200 else source.get('content', ''),
+                'quality': source.get('domain_info', {}).get('quality_score', 5)
+            }
+            state['findings'].append(finding)
+            
+        # Update confidence based on source count and quality
+        avg_quality = sum(s.get('domain_info', {}).get('quality_score', 5) for s in successful_sources) / len(successful_sources)
+        state['confidence'] = min(0.9, (state['sources_count'] * 0.08) + (avg_quality / 15))
+        
+        return True
+    
+    def generate_intermediate_summary(self, session_id: str) -> str:
+        """Create progress summary"""
+        if session_id not in self.response_state:
+            return "No active research session"
+            
+        state = self.response_state[session_id]
+        
+        summary = f"🔍 Research Progress Update\n"
+        summary += f"📊 Sources analyzed: {state['sources_count']}\n"
+        summary += f"🎯 Confidence: {state['confidence']:.2f}\n"
+        
+        if state['findings']:
+            summary += f"📋 Key findings from top sources:\n"
+            for i, finding in enumerate(state['findings'][-3:], 1):  # Last 3 findings
+                summary += f"  {i}. {finding['title']} (Quality: {finding['quality']}/10)\n"
+                summary += f"     {finding['key_content']}\n"
+                
+        return summary
+    
+    def finalize_response(self, session_id: str, time_constrained: bool = False) -> Dict[str, Any]:
+        """Complete final response"""
+        if session_id not in self.response_state:
+            return {'error': 'Session not found'}
+            
+        state = self.response_state[session_id]
+        
+        response = {
+            'question': state['question'],
+            'sources_analyzed': state['sources_count'],
+            'confidence_score': state['confidence'],
+            'time_constrained': time_constrained,
+            'findings_summary': self.generate_intermediate_summary(session_id),
+            'total_findings': len(state['findings'])
+        }
+        
+        if time_constrained:
+            response['limitation_note'] = "Analysis completed under time constraints. Results based on available data."
+            response['confidence_score'] = min(response['confidence_score'], 0.7)  # Cap confidence for time-limited
+            
+        # Cleanup
+        del self.response_state[session_id]
+        
+        return response
+
+class TokenLimitHandler:
+    """Handle token limit errors with recovery strategies"""
+    
+    def __init__(self, token_optimizer: TokenOptimizer):
+        self.token_optimizer = token_optimizer
+        self.retry_count = 0
+        self.max_retries = 3
+        self.last_error_time = 0
+        
+    def handle_token_error(self, sources: List[Dict[str, Any]], error: Exception) -> List[Dict[str, Any]]:
+        """Recover from token limit errors by reducing content size"""
+        error_str = str(error).lower()
+        
+        if ("exceeds the model's max input limit" in error_str or 
+            "token limit" in error_str or 
+            "maximum context length" in error_str):
+            
+            logger.warning(f"🔧 Token limit error detected: {error}")
+            return self.progressive_reduction(sources)
+            
+        return sources
+    
+    def progressive_reduction(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Apply multiple reduction strategies in sequence"""
+        if not sources:
+            return sources
+            
+        original_count = len(sources)
+        reduction_strategies = [
+            self.remove_low_priority_sources,
+            self.summarize_long_content,
+            self.truncate_to_essentials,
+            self.keep_only_top_sources
+        ]
+        
+        for i, strategy in enumerate(reduction_strategies):
+            logger.info(f"🔧 Applying reduction strategy {i+1}/{len(reduction_strategies)}")
+            sources = strategy(sources)
+            
+            total_tokens = self.token_optimizer.count_total_tokens(sources)
+            if total_tokens < self.token_optimizer.max_tokens:
+                logger.info(f"✅ Token limit satisfied: {total_tokens} < {self.token_optimizer.max_tokens}")
+                break
+                
+        final_count = len(sources)
+        logger.info(f"📊 Reduced sources: {original_count} -> {final_count}")
+        return sources
+    
+    def remove_low_priority_sources(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove lowest priority sources (bottom 30%)"""
+        if len(sources) <= 3:
+            return sources
+            
+        # Sort by priority score
+        sorted_sources = sorted(sources, 
+                              key=lambda s: s.get('priority_score', 0.5), 
+                              reverse=True)
+        
+        # Keep top 70%
+        keep_count = max(3, int(len(sorted_sources) * 0.7))
+        return sorted_sources[:keep_count]
+    
+    def summarize_long_content(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Summarize content that's longer than average"""
+        if not sources:
+            return sources
+            
+        # Calculate average content length
+        avg_length = sum(len(s.get('content', '')) for s in sources) / len(sources)
+        
+        summarized_sources = []
+        for source in sources:
+            content_length = len(source.get('content', ''))
+            if content_length > avg_length * 1.5:  # 50% above average
+                # Summarize to average length
+                target_tokens = int(avg_length // 4)  # Rough token estimation
+                summarized = self.token_optimizer.summarize_source(source, target_tokens)
+                summarized_sources.append(summarized or source)
+            else:
+                summarized_sources.append(source)
+                
+        return summarized_sources
+    
+    def truncate_to_essentials(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Keep only essential content from each source"""
+        for source in sources:
+            content = source.get('content', '')
+            if len(content) > 1000:  # Aggressive truncation
+                # Keep first 500 and last 300 characters with key indicators
+                first_part = content[:500]
+                last_part = content[-300:]
+                
+                # Find statistical information in middle
+                lines = content.split('\n')
+                stat_lines = []
+                for line in lines:
+                    if any(indicator in line.lower() for indicator in ['%', 'million', 'billion', 'users', 'revenue']):
+                        stat_lines.append(line)
+                        if len(stat_lines) >= 3:  # Limit statistical excerpts
+                            break
+                
+                middle_stats = '\n'.join(stat_lines) if stat_lines else ""
+                source['content'] = f"{first_part}\n\n[Key Statistics]\n{middle_stats}\n\n[...]\n{last_part}"
+                source['truncated'] = True
+                
+        return sources
+    
+    def keep_only_top_sources(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Emergency reduction: keep only top 5 highest quality sources"""
+        if len(sources) <= 5:
+            return sources
+            
+        # Sort by combined quality and priority
+        sorted_sources = sorted(sources, 
+                              key=lambda s: (s.get('domain_info', {}).get('quality_score', 5) * 
+                                           s.get('priority_score', 0.5)), 
+                              reverse=True)
+        
+        return sorted_sources[:5]
+
+class TimeConstraintHandler:
+    """Handle time constraints with graceful degradation"""
+    
+    def __init__(self, time_manager: TimeManager):
+        self.time_manager = time_manager
+        
+    def check_and_adjust_phase(self, current_phase: str, elapsed_time: float) -> str:
+        """Adjust research phases based on time constraints"""
+        remaining_time = self.time_manager.max_duration - elapsed_time
+        
+        if remaining_time < 120:  # Less than 2 minutes
+            return "emergency_summary"
+        elif remaining_time < 240:  # Less than 4 minutes
+            return "accelerated_analysis"
+        elif current_phase == "content_extraction" and remaining_time < 300:
+            return "priority_extraction_only"
+        
+        return current_phase
+    
+    def emergency_termination(self, partial_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate best possible response with available data"""
+        sources_count = len(partial_results.get("sources", []))
+        avg_quality = 5.0  # Default
+        
+        if sources_count > 0:
+            sources = partial_results.get("sources", [])
+            total_quality = sum(s.get('domain_info', {}).get('quality_score', 5) for s in sources)
+            avg_quality = total_quality / sources_count
+            
+        confidence = min(0.7, (sources_count * 0.08) + (avg_quality / 15))
+        
+        return {
+            "status": "time_limited",
+            "message": "Research completed with time constraints",
+            "confidence": confidence,
+            "sources_analyzed": sources_count,
+            "time_constraint_note": "Analysis limited by 10-minute time constraint",
+            "partial_analysis": partial_results.get("analysis", "Limited analysis due to time constraints"),
+            "available_sources": partial_results.get("sources", [])[:5]  # Include top 5 sources
+        }
+    
+    def should_skip_phase(self, phase: str, remaining_time: int) -> bool:
+        """Determine if a phase should be skipped due to time constraints"""
+        phase_budgets = {
+            "query_generation": 30,
+            "web_search": 60,
+            "content_extraction": 180,  # Minimum for extraction
+            "analysis": 90,            # Minimum for analysis
+            "summary_generation": 30
+        }
+        
+        required_time = phase_budgets.get(phase, 60)
+        return remaining_time < required_time
+
+class CircuitBreaker:
+    """Circuit breaker pattern for external API calls"""
+    
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 300):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = "closed"  # closed, open, half_open
+        
+    def call(self, func, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        if self.state == "open":
+            if (time.time() - self.last_failure_time) > self.recovery_timeout:
+                self.state = "half_open"
+                logger.info("🔄 Circuit breaker moving to half-open state")
+            else:
+                raise Exception("Circuit breaker is open - too many recent failures")
+        
+        try:
+            result = func(*args, **kwargs)
+            self.on_success()
+            return result
+        except Exception as e:
+            self.on_failure()
+            raise e
+    
+    def on_success(self):
+        """Reset circuit breaker on successful call"""
+        self.failure_count = 0
+        if self.state == "half_open":
+            self.state = "closed"
+            logger.info("✅ Circuit breaker reset to closed state")
+    
+    def on_failure(self):
+        """Handle failure in circuit breaker"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.failure_count >= self.failure_threshold:
+            self.state = "open"
+            logger.warning(f"⚠️ Circuit breaker opened after {self.failure_count} failures")
+
 class MongoDBCacheService:
     """MongoDB service for caching scraped web content"""
     
@@ -493,7 +1066,7 @@ class MongoDBCacheService:
             logger.info("🔌 MongoDB connection closed")
 
 class BrightDataContentExtractor:
-    """Bright Data API service for extracting content from web pages with MongoDB caching"""
+    """Hybrid Bright Data service with proxy fallback to Web Unlocker API"""
     
     def __init__(self, cache_service: MongoDBCacheService):
         self.api_key = os.environ.get('BRIGHTDATA_API_KEY', '1893dc9730e9a6ee6b79b263bffc61033781d58a93ab975250fa849a1c0094cf')
@@ -501,10 +1074,19 @@ class BrightDataContentExtractor:
         self.domain_quality_cache = {}
         self.cache_service = cache_service
         
+        # Proxy configuration for SERP API
+        self.proxy = 'http://brd-customer-hl_68b47d39-zone-serp_api1:w158p0glp07q@brd.superproxy.io:33335'
+        
+        # Create proxy opener for search URLs
+        self.proxy_opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({'https': self.proxy, 'http': self.proxy}),
+            urllib.request.HTTPSHandler(context=ssl._create_unverified_context())
+        )
+        
         if not self.api_key:
             logger.warning("⚠️ BRIGHTDATA_API_KEY not set. Content extraction will be limited.")
         else:
-            logger.info("✅ Bright Data API configured successfully")
+            logger.info("✅ Bright Data hybrid API configured successfully")
         
         # Session for backup requests if needed
         self.session = requests.Session()
@@ -647,27 +1229,81 @@ class BrightDataContentExtractor:
             }
     
     async def _extract_content_brightdata(self, url: str, domain_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract content using Bright Data API with correct configuration"""
+        """Extract content using hybrid Bright Data approach: proxy first, then Web Unlocker API"""
         start_time = time.time()
         
         if not self.api_key:
             return await self._fallback_extraction(url, domain_info, start_time)
         
+        # First try: Proxy method (good for search results)
         try:
-            # Prepare Bright Data API request with correct format
+            logger.info(f"🔄 Trying Bright Data proxy for: {url}")
+            
+            # Use proxy in a separate thread to avoid blocking
+            import asyncio
+            import functools
+            
+            def proxy_request():
+                try:
+                    response = self.proxy_opener.open(url, timeout=15)
+                    return response.read().decode()
+                except Exception as e:
+                    raise e
+            
+            # Run proxy request in thread pool
+            loop = asyncio.get_event_loop()
+            html_content = await loop.run_in_executor(None, proxy_request)
+            
+            extraction_time = time.time() - start_time
+            
+            # Extract title and content from HTML
+            title = self._extract_title_from_html(html_content)
+            text_content = self._extract_text_from_html(html_content)
+            
+            if text_content and len(text_content.strip()) > 50:
+                logger.info(f"✅ Successful extraction via Bright Data proxy: {len(text_content)} chars in {extraction_time:.2f}s")
+                
+                return {
+                    'url': url,
+                    'title': title,
+                    'content': text_content,
+                    'method': 'brightdata_proxy',
+                    'word_count': len(text_content.split()),
+                    'extraction_time': extraction_time,
+                    'domain_info': domain_info,
+                    'success': True
+                }
+            else:
+                logger.warning(f"⚠️ Bright Data proxy returned insufficient content for {url}")
+                raise Exception("Insufficient content from proxy")
+                
+        except Exception as proxy_error:
+            logger.warning(f"⚠️ Bright Data proxy failed for {url}: {proxy_error}")
+            
+            # Check if it's a 400 error (unsupported URL for SERP API)
+            if "400" in str(proxy_error) or "HTTP Error 400" in str(proxy_error):
+                logger.info(f"🔄 Trying Web Unlocker API for {url} (proxy returned 400)")
+                return await self._extract_content_web_unlocker(url, domain_info, start_time)
+            else:
+                # Other errors, try Web Unlocker as fallback
+                logger.info(f"🔄 Trying Web Unlocker API as fallback for {url}")
+                return await self._extract_content_web_unlocker(url, domain_info, start_time)
+    
+    async def _extract_content_web_unlocker(self, url: str, domain_info: Dict[str, Any], start_time: float) -> Dict[str, Any]:
+        """Extract content using Web Unlocker API (fallback method)"""
+        try:
             headers = {
                 'Authorization': f'Bearer {self.api_key}',
                 'Content-Type': 'application/json'
             }
             
-            # Correct payload format for Bright Data API
             payload = {
-                'zone': 'serp_api1',  # Required zone parameter
+                'zone': 'web_unlocker2',
                 'url': url,
-                'format': 'raw'  # Get raw HTML content
+                'format': 'raw'
             }
             
-            logger.info(f"🔄 Extracting content via Bright Data API: {url}")
+            logger.info(f"🔄 Extracting content via Web Unlocker API: {url}")
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -678,61 +1314,36 @@ class BrightDataContentExtractor:
                 ) as response:
                     
                     if response.status == 200:
-                        # Get raw HTML content
                         html_content = await response.text()
                         extraction_time = time.time() - start_time
                         
-                        # Extract title and content from HTML
                         title = self._extract_title_from_html(html_content)
                         text_content = self._extract_text_from_html(html_content)
                         
                         if text_content and len(text_content.strip()) > 50:
-                            logger.info(f"✅ Successful extraction via Bright Data API: {len(text_content)} chars in {extraction_time:.2f}s")
+                            logger.info(f"✅ Successful extraction via Web Unlocker API: {len(text_content)} chars in {extraction_time:.2f}s")
                             
                             return {
                                 'url': url,
                                 'title': title,
                                 'content': text_content,
-                                'method': 'brightdata_api',
+                                'method': 'brightdata_web_unlocker',
                                 'word_count': len(text_content.split()),
                                 'extraction_time': extraction_time,
                                 'domain_info': domain_info,
                                 'success': True
                             }
                         else:
-                            logger.warning(f"⚠️ Bright Data returned insufficient content for {url}")
+                            logger.warning(f"⚠️ Web Unlocker returned insufficient content for {url}")
                             return await self._fallback_extraction(url, domain_info, start_time)
-                    
-                    elif response.status == 429:
-                        logger.warning(f"⚠️ Bright Data API rate limit reached for {url}")
-                        return await self._fallback_extraction(url, domain_info, start_time)
-                    
-                    elif response.status == 401:
-                        logger.error(f"❌ Bright Data API authentication failed for {url}: Invalid API key")
-                        return await self._fallback_extraction(url, domain_info, start_time)
-                    
-                    elif response.status == 403:
-                        logger.error(f"❌ Bright Data API access forbidden for {url}: Check subscription limits")
-                        return await self._fallback_extraction(url, domain_info, start_time)
-                    
-                    elif response.status == 400:
-                        error_text = await response.text()
-                        logger.error(f"❌ Bright Data API bad request for {url}: {error_text}")
-                        return await self._fallback_extraction(url, domain_info, start_time)
                     
                     else:
                         error_text = await response.text()
-                        logger.warning(f"⚠️ Bright Data API error {response.status} for {url}: {error_text}")
+                        logger.warning(f"⚠️ Web Unlocker API error {response.status} for {url}: {error_text}")
                         return await self._fallback_extraction(url, domain_info, start_time)
                         
-        except aiohttp.ClientTimeout as e:
-            logger.warning(f"⚠️ Bright Data API timeout for {url}: {e}")
-            return await self._fallback_extraction(url, domain_info, start_time)
-        except aiohttp.ClientError as e:
-            logger.warning(f"⚠️ Bright Data API client error for {url}: {e}")
-            return await self._fallback_extraction(url, domain_info, start_time)
         except Exception as e:
-            logger.warning(f"⚠️ Bright Data API unexpected error for {url}: {e}")
+            logger.warning(f"⚠️ Web Unlocker API error for {url}: {e}")
             return await self._fallback_extraction(url, domain_info, start_time)
     
     def _extract_title_from_html(self, html_content: str) -> str:
@@ -896,7 +1507,7 @@ class EnhancedGoogleWebSearchService:
             return []
 
 class EnhancedDeepSeekResearchService:
-    """Enhanced research service with MongoDB caching, multi-query strategy, and progressive answer updates"""
+    """Enhanced research service with optimization components, time management, and token optimization"""
     
     def __init__(self):
         self.api_key = os.environ.get('DEEPSEEK_API_KEY', '')
@@ -907,6 +1518,18 @@ class EnhancedDeepSeekResearchService:
         self.content_extractor = BrightDataContentExtractor(self.cache_service)
         self.metrics = SearchMetrics()
         self.answer_tracker = None  # Will be initialized in research
+        
+        # New optimization components
+        self.time_manager = TimeManager(max_duration=600)  # 10 minutes
+        self.token_optimizer = TokenOptimizer(max_tokens=50000)
+        self.content_prioritizer = ContentPrioritizer()
+        self.progressive_response = ProgressiveResponseGenerator()
+        self.token_handler = TokenLimitHandler(self.token_optimizer)
+        self.time_handler = TimeConstraintHandler(self.time_manager)
+        self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=300)
+        
+        # Research session tracking
+        self.current_session = None
         
         if not self.api_key:
             logger.error("❌ DEEPSEEK_API_KEY not set")
@@ -1487,243 +2110,468 @@ SOURCES:
                 'timestamp': datetime.utcnow().isoformat()
             }
     
-    async def conduct_enhanced_research(self, original_question: str, target_relevance: int = 7, max_iterations: int = 2) -> Dict[str, Any]:
-        """Conduct comprehensive research with MongoDB caching, time limits, progressive answers, and statistical summaries (v3.05)"""
-        timing = TimingMetrics(start_time=time.time())
+    async def conduct_enhanced_research(self, original_question: str, target_relevance: int = 7, max_iterations: int = 3) -> Dict[str, Any]:
+        """Optimized research with time management, token optimization, and progressive responses"""
+        # Initialize optimization components
+        session_start = self.time_manager.start_timer()
+        self.current_session = OptimizedResearchSession(
+            session_id=f"research_{int(session_start)}",
+            question=original_question,
+            start_time=session_start,
+            target_sources=10
+        )
         
-        # Initialize progressive answer tracker
-        self.answer_tracker = ProgressiveAnswerTracker(original_question)
+        # Initialize progressive response
+        progress_session = self.progressive_response.initialize_response(original_question)
+        session_id = progress_session['session_id']
         
-        logger.info(f"🚀 Starting enhanced research with statistical summaries (v3.05) for: {original_question}")
-        logger.info(f"🎯 Target relevance score: {target_relevance}/10")
-        logger.info(f"⏰ Time limit: {MAX_RESEARCH_TIME/60:.1f} minutes")
-        logger.info(f"📊 Statistical summary generation: Enabled")
+        logger.info(f"🚀 Starting OPTIMIZED research v3.05 for: {original_question}")
+        logger.info(f"⏰ Time limit: {self.time_manager.max_duration}s with optimization")
+        logger.info(f"🎯 Target sources: {self.current_session.target_sources}")
+        logger.info(f"🎯 Target relevance: {target_relevance}/10 with max {max_iterations} iterations")
         
         results = {
             'original_question': original_question,
-            'timestamp': datetime.utcnow().isoformat(),
-            'research_type': 'enhanced_multi_query_with_mongodb_v305',
+            'timestamp': datetime.now().isoformat(),
+            'research_type': 'optimized_research_v305',
+            'session_id': self.current_session.session_id,
+            'optimization_features': ['time_management', 'token_optimization', 'content_prioritization', 'progressive_response', 'statistical_summary'],
             'target_relevance': target_relevance,
-            'iterations': [],
-            'final_metrics': {}
+            'phases': [],
+            'final_metrics': {},
+            'iterations': []
         }
         
+        # Track all sources across iterations
+        all_sources = []
+        current_iteration = 0
         current_relevance = 0
-        iteration = 0
-        all_extracted_contents = []
+        statistical_summary = None
+        
+        # Perform iterations until target relevance is met or max iterations reached
+        while current_iteration < max_iterations and current_relevance < target_relevance:
+            if self.time_manager.should_terminate():
+                logger.warning(f"⏰ Time limit approaching, stopping iterations at {current_iteration}")
+                break
+                
+            current_iteration += 1
+            logger.info(f"🔄 Starting iteration {current_iteration}/{max_iterations}")
+            
+            # Track iteration results
+            iteration_results = {
+                'iteration': current_iteration,
+                'relevance_achieved': 0,
+                'steps': {},
+                'statistical_summary': None
+            }
+        
+        all_sources = []
         
         try:
-            while (current_relevance < target_relevance and 
-                   iteration < max_iterations and 
-                   not timing.time_limit_exceeded and
-                   not check_time_limit(timing.start_time)):
-                iteration += 1
-                logger.info(f"🔄 Starting iteration {iteration}/{max_iterations}")
-                
-                # Check time limit before each iteration
-                if check_time_limit(timing.start_time):
-                    logger.warning(f"⏰ Time limit ({MAX_RESEARCH_TIME/60:.1f}min) reached, stopping research")
-                    timing.time_limit_exceeded = True
-                    break
-                
-                iteration_results = {
-                    'iteration': iteration,
-                    'steps': {},
-                    'relevance_achieved': 0
-                }
-                
-                # Step 1: Generate multi-angle queries
-                timing.start_phase(f'query_generation_iter{iteration}')
-                if iteration == 1:
-                    queries = await self.generate_multi_angle_queries(original_question)
-                else:
-                    # Generate follow-up queries based on gaps identified in previous iteration
-                    queries = await self.generate_followup_queries(original_question, results['iterations'][-1])
-                timing.end_phase(f'query_generation_iter{iteration}')
-                
-                iteration_results['steps']['step1'] = {
-                    'description': f'Generate queries for iteration {iteration}',
-                    'queries': queries,
-                    'query_count': len(queries),
-                    'time_taken': timing.phase_times.get(f'query_generation_iter{iteration}_duration', 0),
-                    'success': True
-                }
-                
-                # Step 1.5: Check MongoDB cache first (only in first iteration)
-                cached_content = []
-                if iteration == 1:
-                    timing.start_phase(f'cache_search_iter{iteration}')
-                    cached_content = await self.search_existing_cache(queries)
-                    timing.end_phase(f'cache_search_iter{iteration}')
+            # Phase 1: Query Generation (Time Budget: 30s)
+            phase_start = time.time()
+            self.current_session.current_phase = "query_generation"
+            
+            if self.time_handler.should_skip_phase("query_generation", self.time_manager.check_time_remaining()):
+                logger.warning("⏰ Skipping query generation due to time constraints")
+                queries = [original_question]  # Fallback
+            else:
+                try:
+                    queries = await asyncio.wait_for(
+                        self.generate_multi_angle_queries(original_question),
+                        timeout=self.time_manager.get_phase_time_budget("query_generation")
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("⏰ Query generation timeout, using fallback")
+                    queries = [original_question, f"statistics about {original_question}", f"latest data on {original_question}"]
+            
+            phase_duration = time.time() - phase_start
+            results['phases'].append({
+                'phase': 'query_generation',
+                'duration': phase_duration,
+                'queries_generated': len(queries),
+                'success': True
+            })
+            
+            # Phase 2: Web Search (Time Budget: 60s)
+            if self.time_manager.should_terminate():
+                return self.time_handler.emergency_termination({'sources': all_sources, 'analysis': 'Time limited before search'})
+            
+            phase_start = time.time()
+            self.current_session.current_phase = "web_search"
+            
+            if self.time_handler.should_skip_phase("web_search", self.time_manager.check_time_remaining()):
+                search_results = []
+            else:
+                try:
+                    search_results = await asyncio.wait_for(
+                        self.perform_comprehensive_search(queries, max_results_per_query=5),
+                        timeout=self.time_manager.get_phase_time_budget("web_search")
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("⏰ Search timeout, using available results")
+                    search_results = []
+            
+            phase_duration = time.time() - phase_start
+            results['phases'].append({
+                'phase': 'web_search',
+                'duration': phase_duration,
+                'results_found': len(search_results),
+                'success': len(search_results) > 0
+            })
+            
+            # Phase 3: Prioritized Content Extraction (Time Budget: 360s)
+            if self.time_manager.should_terminate():
+                return self.time_handler.emergency_termination({'sources': all_sources, 'analysis': 'Time limited before extraction'})
+            
+            phase_start = time.time()
+            self.current_session.current_phase = "content_extraction"
+            
+            # Apply time-aware filtering
+            remaining_time = self.time_manager.check_time_remaining()
+            prioritized_results = self.content_prioritizer.filter_by_time_budget(search_results, remaining_time - 150)  # Reserve 150s for analysis
+            
+            if prioritized_results:
+                try:
+                    # Extract content with circuit breaker protection
+                    extracted_sources = await self.circuit_breaker.call(
+                        self.extract_and_analyze_content_optimized, 
+                        prioritized_results, 
+                        queries,
+                        remaining_time - 150
+                    )
+                    all_sources.extend(extracted_sources)
                     
-                    iteration_results['steps']['step1_5'] = {
-                        'description': f'Search MongoDB cache iteration {iteration}',
-                        'cached_results': len(cached_content),
-                        'time_taken': timing.phase_times.get(f'cache_search_iter{iteration}_duration', 0),
-                        'success': True
-                    }
+                    # Update progressive response
+                    self.progressive_response.update_with_sources(session_id, extracted_sources)
                     
-                    if cached_content:
-                        logger.info(f"💾 Using {len(cached_content)} cached results from MongoDB")
-                        # Update answer with cached content
-                        await self.answer_tracker.async_update_answer(cached_content, self.client)
-                        all_extracted_contents.extend(cached_content)
-                
-                # Step 2: Comprehensive search (if needed)
-                timing.start_phase(f'comprehensive_search_iter{iteration}')
-                search_results = await self.perform_comprehensive_search(queries, max_results_per_query=6)
-                timing.end_phase(f'comprehensive_search_iter{iteration}')
-                
-                iteration_results['steps']['step2'] = {
-                    'description': f'Comprehensive search iteration {iteration}',
-                    'search_results': search_results,
-                    'total_results': len(search_results),
-                    'queries_used': len(queries),
-                    'time_taken': timing.phase_times.get(f'comprehensive_search_iter{iteration}_duration', 0),
-                    'success': len(search_results) > 0
-                }
-                
-                if not search_results and not cached_content:
-                    logger.warning(f"⚠️ No search results or cached content found in iteration {iteration}")
-                    iteration_results['warning'] = 'No search results or cached content found'
-                    results['iterations'].append(iteration_results)
-                    continue
-                
-                # Step 3: Content extraction and analysis (skip if all from cache)
-                new_extracted_contents = []
-                if search_results:
-                    timing.start_phase(f'content_extraction_iter{iteration}')
-                    new_extracted_contents = await self.extract_and_analyze_content(search_results, queries)
-                    timing.end_phase(f'content_extraction_iter{iteration}')
-                    
-                    # Progressive answer update after each batch of content
-                    if new_extracted_contents:
-                        await self.answer_tracker.async_update_answer(new_extracted_contents, self.client)
-                    
-                    # Combine with previous contents for comprehensive analysis
-                    all_extracted_contents.extend(new_extracted_contents)
-                
-                iteration_results['steps']['step3'] = {
-                    'description': f'Content extraction iteration {iteration}',
-                    'new_extractions': len(new_extracted_contents),
-                    'cached_extractions': len(cached_content) if iteration == 1 else 0,
-                    'total_extractions': len(all_extracted_contents),
-                    'successful_new': sum(1 for c in new_extracted_contents if c['success']),
+                except Exception as e:
+                    logger.warning(f"⚠️ Content extraction error: {e}")
+                    extracted_sources = []
+            
+            phase_duration = time.time() - phase_start
+            results['phases'].append({
+                'phase': 'content_extraction',
+                'duration': phase_duration,
+                'sources_processed': len(all_sources),
+                'success': len(all_sources) > 0
+            })
+            
+            # Phase 4: Token-Optimized Analysis (Time Budget: 120s)
+            if self.time_manager.should_terminate():
+                return self.time_handler.emergency_termination({'sources': all_sources, 'analysis': 'Time limited before analysis'})
+            
+            phase_start = time.time()
+            self.current_session.current_phase = "analysis"
+            
+            # Optimize content for token limits
+            optimized_sources = self.token_optimizer.optimize_content(all_sources)
+            
+            if optimized_sources:
+                try:
+                    analysis = await self.circuit_breaker.call(
+                        self.analyze_content_with_token_optimization,
+                        original_question,
+                        optimized_sources,
+                        self.time_manager.check_time_remaining()
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Analysis failed: {e}")
+                    # Try token limit recovery
+                    reduced_sources = self.token_handler.handle_token_error(optimized_sources, e)
+                    if reduced_sources:
+                        try:
+                            analysis = await self.analyze_content_with_token_optimization(
+                                original_question, reduced_sources, 60  # Emergency time limit
+                            )
+                        except Exception as retry_error:
+                            logger.error(f"❌ Retry analysis failed: {retry_error}")
+                            analysis = self.generate_fallback_analysis(original_question, reduced_sources)
+                    else:
+                        analysis = self.generate_fallback_analysis(original_question, all_sources)
+            else:
+                analysis = self.generate_fallback_analysis(original_question, all_sources)
+            
+            phase_duration = time.time() - phase_start
+            results['phases'].append({
+                'phase': 'analysis',
+                'duration': phase_duration,
+                'sources_analyzed': len(optimized_sources),
+                'token_optimization_applied': len(optimized_sources) < len(all_sources),
+                'success': 'error' not in analysis
+            })
+            
+            # Phase 5: Final Response Generation
+            self.current_session.current_phase = "summary_generation"
+            
+            # Finalize progressive response
+            time_constrained = self.time_manager.should_terminate()
+            final_response = self.progressive_response.finalize_response(session_id, time_constrained)
+            
+            # Complete session tracking
+            total_duration = time.time() - session_start
+            self.current_session.completion_status = "time_limited" if time_constrained else "completed"
+            self.current_session.confidence_score = final_response.get('confidence_score', 0.5)
+            
+            # Build comprehensive results
+            results.update({
+                'final_analysis': analysis,
+                'progressive_response': final_response,
+                'optimization_summary': {
+                    'total_sources_found': len(all_sources),
+                    'sources_after_optimization': len(optimized_sources),
+                    'time_constrained': time_constrained,
+                    'total_duration': total_duration,
+                    'phases_completed': len(results['phases']),
                     'cache_hits': self.metrics.cache_hits,
-                    'cache_misses': self.metrics.cache_misses,
-                    'time_taken': timing.phase_times.get(f'content_extraction_iter{iteration}_duration', 0),
-                    'success': sum(1 for c in new_extracted_contents if c['success']) > 0 or len(cached_content) > 0
-                }
-                
-                # Step 4: Enhanced analysis of all content
-                timing.start_phase(f'content_analysis_iter{iteration}')
-                analysis = await self.analyze_content_with_gaps(original_question, all_extracted_contents)
-                timing.end_phase(f'content_analysis_iter{iteration}')
-                
-                current_relevance = analysis.get('overall_relevance_score', 0)
-                
-                iteration_results['steps']['step4'] = {
-                    'description': f'Comprehensive analysis iteration {iteration}',
-                    'analysis': analysis,
-                    'relevance_score': current_relevance,
-                    'sources_analyzed': len(all_extracted_contents),
-                    'time_taken': timing.phase_times.get(f'content_analysis_iter{iteration}_duration', 0),
-                    'success': 'error' not in analysis
-                }
-                
-                iteration_results['relevance_achieved'] = current_relevance
-                results['iterations'].append(iteration_results)
-                
-                logger.info(f"✅ Iteration {iteration} completed: Relevance score {current_relevance}/10")
-                
-                if current_relevance >= target_relevance:
-                    logger.info(f"🎉 Target relevance {target_relevance} achieved with score {current_relevance}!")
-                    break
-                elif iteration < max_iterations:
-                    logger.info(f"🔄 Target not met ({current_relevance} < {target_relevance}), continuing to iteration {iteration + 1}")
-            
-            # Finalize timing
-            timing.end_time = time.time()
-            total_duration = timing.get_total_duration()
-            
-            # Final comprehensive metrics
-            final_analysis = results['iterations'][-1]['steps']['step4']['analysis'] if results['iterations'] else {}
-            
-            # Get final cache stats
-            cache_stats = await self.cache_service.get_cache_stats()
-            
-            # Get final progressive answer
-            final_answer_data = self.answer_tracker.get_final_answer()
-            
-            # v3.05: Generate statistical summary
-            logger.info("📊 Generating final statistical summary...")
-            timing.start_phase('statistical_summary_generation')
-            statistical_summary = await self.generate_statistical_summary(original_question, all_extracted_contents)
-            timing.end_phase('statistical_summary_generation')
-            
-            results['final_metrics'] = {
-                'total_duration': total_duration,
-                'iterations_completed': iteration,
-                'target_achieved': current_relevance >= target_relevance,
-                'final_relevance_score': current_relevance,
-                'phase_durations': timing.get_phase_summary(),
-                'search_metrics': {
-                    'total_queries': self.metrics.total_queries,
-                    'total_results': self.metrics.total_results,
-                    'total_extractions': len(all_extracted_contents),
-                    'successful_extractions': self.metrics.successful_extractions,
-                    'failed_extractions': self.metrics.failed_extractions,
-                    'extraction_success_rate': (self.metrics.successful_extractions / 
-                                               max(1, self.metrics.successful_extractions + self.metrics.failed_extractions)) * 100,
-                    'source_distribution': dict(self.metrics.source_types),
-                    'relevance_progression': [iter_data['relevance_achieved'] for iter_data in results['iterations']],
-                    'cache_performance': {
-                        'cache_hits': self.metrics.cache_hits,
-                        'cache_misses': self.metrics.cache_misses,
-                        'cache_hit_rate': (self.metrics.cache_hits / max(1, self.metrics.cache_hits + self.metrics.cache_misses)) * 100,
-                        'total_cache_entries': cache_stats.get('total_entries', 0),
-                        'fresh_cache_entries': cache_stats.get('fresh_entries', 0)
-                    },
-                    'statistical_data_found': self.metrics.statistical_data_found  # v3.05
+                    'circuit_breaker_triggered': self.circuit_breaker.failure_count > 0
                 },
-                'performance_analysis': {
-                    'avg_time_per_iteration': total_duration / max(1, iteration),
-                    'relevance_improvement_rate': (current_relevance - results['iterations'][0]['relevance_achieved']) / max(1, iteration - 1) if iteration > 1 else 0,
-                    'final_analysis_summary': final_analysis.get('analysis_content', '')[:500] + '...' if final_analysis.get('analysis_content') else 'No analysis available'
-                },
-                'progressive_answer': final_answer_data,
-                'statistical_summary': statistical_summary  # v3.05: Add statistical summary
-            }
+                'session_metadata': {
+                    'session_id': self.current_session.session_id,
+                    'completion_status': self.current_session.completion_status,
+                    'confidence_score': self.current_session.confidence_score
+                }
+            })
             
+            logger.info(f"✅ Optimized research completed in {total_duration:.1f}s")
+            logger.info(f"📊 Processed {len(all_sources)} sources, analyzed {len(optimized_sources)}")
+            logger.info(f"🎯 Confidence: {self.current_session.confidence_score:.2f}")
+            
+            # Mark research as successful
             results['success'] = True
             
-            # Enhanced logging summary
-            logger.info(f"✅ Enhanced research with statistical summary (v3.05) completed!")
-            logger.info(f"📊 Final relevance score: {current_relevance}/10 (Target: {target_relevance})")
-            logger.info(f"🔄 Iterations completed: {iteration}/{max_iterations}")
-            logger.info(f"⏱️ Total time: {total_duration:.2f}s")
-            logger.info(f"🌐 API calls: {self.metrics.cache_misses}, 💾 Cache hits: {self.metrics.cache_hits}")
-            logger.info(f"📊 Statistical summary: {statistical_summary['summary_type']} ({statistical_summary['source_count']} sources)")
-            logger.info(f"🎯 Target achieved: {'Yes' if current_relevance >= target_relevance else 'No'}")
+            # Add iterations structure for compatibility with display code
+            results['iterations'] = [{
+                'iteration': 1,
+                'relevance_achieved': min(10, max(1, int(self.current_session.confidence_score * 10))),
+                'steps': {
+                    'step1': {
+                        'description': 'Query Generation',
+                        'success': True,
+                        'time_taken': sum(p['duration'] for p in results['phases'] if p['phase'] == 'query_generation'),
+                        'query_count': len(queries)
+                    },
+                    'step2': {
+                        'description': 'Web Search',
+                        'success': True,
+                        'time_taken': sum(p['duration'] for p in results['phases'] if p['phase'] == 'web_search'),
+                        'total_results': sum(p.get('results_found', 0) for p in results['phases'] if p['phase'] == 'web_search')
+                    },
+                    'step3': {
+                        'description': 'Content Extraction',
+                        'success': True,
+                        'time_taken': sum(p['duration'] for p in results['phases'] if p['phase'] == 'content_extraction'),
+                        'sources_extracted': len(all_sources)
+                    },
+                    'step4': {
+                        'description': 'Analysis',
+                        'success': bool(analysis),
+                        'time_taken': sum(p['duration'] for p in results['phases'] if p['phase'] == 'analysis'),
+                        'analysis': analysis or {'analysis_content': 'Analysis not available'}
+                    }
+                },
+                'statistical_summary': analysis.get('statistical_summary') if analysis else None
+            }]
+            
+            return results
             
         except Exception as e:
-            timing.end_time = time.time()
-            total_duration = timing.get_total_duration()
-            
-            logger.error(f"❌ Enhanced research failed after {total_duration:.2f}s: {e}")
+            logger.error(f"❌ Research failed: {e}")
+            # Emergency response generation
+            emergency_results = self.time_handler.emergency_termination({
+                'sources': all_sources,
+                'analysis': f'Research failed due to error: {str(e)}'
+            })
+            results['emergency_termination'] = emergency_results
             results['error'] = str(e)
             results['success'] = False
-            results['final_metrics'] = {
-                'total_duration': total_duration,
-                'iterations_completed': iteration,
-                'phase_durations': timing.get_phase_summary(),
-                'cache_performance': {
-                    'cache_hits': self.metrics.cache_hits,
-                    'cache_misses': self.metrics.cache_misses
-                }
-            }
+            return results
+    
+    async def extract_and_analyze_content_optimized(self, search_results: List[Dict[str, Any]], queries: List[str], time_budget: int) -> List[Dict[str, Any]]:
+        """Optimized content extraction with time constraints and prioritization"""
+        logger.info(f"🔍 Starting optimized content extraction for {len(search_results)} sources (budget: {time_budget}s)")
         
-        return results
+        # Prioritize sources
+        prioritized_sources = self.content_prioritizer.rank_sources(search_results)
+        
+        extracted_sources = []
+        extraction_start = time.time()
+        
+        for i, source in enumerate(prioritized_sources):
+            # Check time budget
+            elapsed = time.time() - extraction_start
+            if elapsed >= time_budget:
+                logger.warning(f"⏰ Content extraction time budget exceeded after {i} sources")
+                break
+            
+            try:
+                # Extract with timeout based on remaining budget
+                remaining_time = time_budget - elapsed
+                source_timeout = min(45, remaining_time // max(1, len(prioritized_sources) - i))
+                
+                # Normalize URL key (Google search uses 'link', but extraction expects 'url')
+                url = source.get('url') or source.get('link', '')
+                if not url:
+                    logger.warning(f"⚠️ No URL found in source: {source}")
+                    continue
+                
+                extracted = await asyncio.wait_for(
+                    self.content_extractor.extract_article_content(url, queries),
+                    timeout=source_timeout
+                )
+                
+                if extracted and extracted.get('success'):
+                    extracted['priority_score'] = source.get('priority_score', 0.5)
+                    extracted_sources.append(extracted)
+                    
+                    # Update metrics
+                    self.metrics.successful_extractions += 1
+                    if extracted.get('from_cache'):
+                        self.metrics.cache_hits += 1
+                    else:
+                        self.metrics.cache_misses += 1
+                
+            except asyncio.TimeoutError:
+                url = source.get('url') or source.get('link', 'unknown')
+                logger.warning(f"⏰ Extraction timeout for {url}")
+                self.metrics.failed_extractions += 1
+            except Exception as e:
+                url = source.get('url') or source.get('link', 'unknown')
+                logger.warning(f"⚠️ Extraction failed for {url}: {e}")
+                self.metrics.failed_extractions += 1
+        
+        logger.info(f"✅ Extracted {len(extracted_sources)} sources in {time.time() - extraction_start:.1f}s")
+        return extracted_sources
+    
+    async def analyze_content_with_token_optimization(self, question: str, sources: List[Dict[str, Any]], time_budget: int) -> Dict[str, Any]:
+        """Token-optimized content analysis with fallback strategies"""
+        logger.info(f"🧠 Starting token-optimized analysis of {len(sources)} sources")
+        
+        try:
+            # Prepare content for analysis
+            source_contents = []
+            for i, source in enumerate(sources[:10]):  # Limit to top 10 sources
+                content_summary = f"Source {i+1}: {source.get('title', 'Unknown')}\n"
+                content_summary += f"URL: {source.get('url', 'Unknown')}\n"
+                content_summary += f"Content: {source.get('content', '')}\n"
+                content_summary += f"Quality Score: {source.get('domain_info', {}).get('quality_score', 5)}/10\n\n"
+                source_contents.append(content_summary)
+            
+            combined_content = '\n'.join(source_contents)
+            
+            # Count tokens and optimize if needed
+            token_count = self.token_optimizer.count_tokens(combined_content)
+            if token_count > self.token_optimizer.max_tokens:
+                logger.warning(f"⚠️ Content exceeds token limit: {token_count} > {self.token_optimizer.max_tokens}")
+                # Use optimization to reduce content
+                optimized_sources = self.token_optimizer.optimize_content(sources)
+                if optimized_sources:
+                    # Rebuild content with optimized sources
+                    source_contents = []
+                    for i, source in enumerate(optimized_sources):
+                        content_summary = f"Source {i+1}: {source.get('title', 'Unknown')}\n"
+                        content_summary += f"Content: {source.get('content', '')}\n\n"
+                        source_contents.append(content_summary)
+                    combined_content = '\n'.join(source_contents)
+            
+            # Create analysis prompt
+            analysis_prompt = f"""Analyze the following research content and provide a comprehensive answer to the question.
+
+Question: {question}
+
+Research Sources:
+{combined_content}
+
+Instructions:
+1. Provide a comprehensive answer based on the sources
+2. Include specific data, statistics, and factual information where available
+3. Rate the overall relevance of the sources (1-10 scale)
+4. Identify any gaps in the research
+5. Provide confidence score (0.0-1.0) based on source quality and completeness
+
+Format your response as JSON with the following structure:
+{{
+    "comprehensive_answer": "Your detailed answer here",
+    "key_findings": ["finding 1", "finding 2", "finding 3"],
+    "statistics_found": ["stat 1", "stat 2"],
+    "overall_relevance_score": 8,
+    "confidence_score": 0.85,
+    "gaps_identified": ["gap 1", "gap 2"],
+    "source_quality_assessment": "assessment of source quality"
+}}"""
+
+            # Make API call with timeout
+            response = await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[{"role": "user", "content": analysis_prompt}],
+                    stream=False,
+                    temperature=0.3
+                ),
+                timeout=min(time_budget, 90)
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            
+            # Try to parse JSON response
+            try:
+                analysis_result = json.loads(result_text)
+                analysis_result['sources_analyzed'] = len(sources)
+                analysis_result['token_optimization_applied'] = token_count > self.token_optimizer.max_tokens
+                return analysis_result
+            except json.JSONDecodeError:
+                # Fallback: return structured response
+                return {
+                    'comprehensive_answer': result_text,
+                    'overall_relevance_score': 7,
+                    'confidence_score': 0.6,
+                    'sources_analyzed': len(sources),
+                    'token_optimization_applied': token_count > self.token_optimizer.max_tokens,
+                    'parsing_note': 'JSON parsing failed, returned raw response'
+                }
+                
+        except asyncio.TimeoutError:
+            logger.warning("⏰ Analysis timeout, generating emergency response")
+            return self.generate_fallback_analysis(question, sources)
+        except Exception as e:
+            logger.error(f"❌ Analysis failed: {e}")
+            return self.generate_fallback_analysis(question, sources)
+    
+    def generate_fallback_analysis(self, question: str, sources: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Generate fallback analysis when main analysis fails"""
+        logger.info("🆘 Generating fallback analysis")
+        
+        # Extract key information from sources
+        source_titles = [s.get('title', 'Unknown') for s in sources[:5]]
+        source_count = len(sources)
+        successful_sources = len([s for s in sources if s.get('success', False)])
+        
+        # Calculate basic confidence
+        confidence = min(0.7, successful_sources * 0.1)
+        
+        fallback_answer = f"""Based on the available research sources, here is a summary for: {question}
+
+Research Summary:
+- Analyzed {source_count} sources, with {successful_sources} successful extractions
+- Key sources include: {', '.join(source_titles)}
+
+This analysis was generated under constraints and may be incomplete. The research process encountered limitations that prevented full analysis.
+
+Recommendations:
+1. Consider running the research again with more time
+2. Verify findings with additional sources
+3. Focus on the highest-quality sources identified
+"""
+        
+        return {
+            'comprehensive_answer': fallback_answer,
+            'overall_relevance_score': 5,
+            'confidence_score': confidence,
+            'sources_analyzed': source_count,
+            'successful_extractions': successful_sources,
+            'fallback_analysis': True,
+            'limitation_note': 'This is a fallback analysis due to processing constraints'
+        }
     
     async def generate_followup_queries(self, original_question: str, previous_iteration: Dict[str, Any]) -> List[str]:
         """Generate follow-up queries based on gaps identified in previous iteration"""
