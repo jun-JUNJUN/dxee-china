@@ -1,0 +1,17 @@
+{
+  "spec_name": "comprehensive-analysis-fix",
+  "created_at": "2025-07-24T16:00:00Z",
+  "description": "Fix comprehensive analysis generation and result summarization in research system v3.07",
+  "issue_description": "The system successfully extracts 8 sources (hginsights.com, salesforce.com, etc.) but fails to generate the comprehensive analysis and shows 0/10 relevance score instead of the expected analysis summary answering the original research question about CRM/SFA software rankings in Japan.",
+  "phases": {
+    "requirements": false,
+    "design": false,
+    "tasks": false
+  },
+  "status": "requirements_pending",
+  "priority": "high",
+  "affected_files": [
+    "backend/test_deepseek_advanced_web_research3_07.py",
+    "backend/enhanced_research_v3_07_optimized_results_20250724_155306.json"
+  ]
+}
