@@ -1,77 +1,118 @@
 # Technology Stack
 
-## Core Framework
-- **Python**: >=3.11 (required)
-- **Tornado**: 6.4.2 - Async web framework for handling HTTP requests and WebSockets
-- **Gunicorn**: WSGI server for production deployment with Tornado workers
-- **UV**: Modern Python package manager (preferred over pip)
+## Architecture Overview
+A Claude Code extension system that uses hooks and slash commands to implement Kiro-style spec-driven development workflows.
 
-## Database & Search
-- **MongoDB**: Local installation for user data, chat history, and messages
-- **Motor**: Async MongoDB driver for Tornado integration
-- **Meilisearch**: Docker-based search engine for content discovery
-- **meilisearch-python-sdk**: Python client for search integration
+## Core Technologies
+- **Platform**: Claude Code CLI (darwin)
+- **Language**: Markdown-based specifications and documentation
+- **Automation**: Claude Code hooks system
+- **Version Control**: Git
 
-## AI & External APIs
-- **OpenAI SDK**: Used for DeepSeek API integration with streaming support
-- **DeepSeek API**: Primary AI service for chat responses
-- **Web Scraping**: BeautifulSoup4, newspaper3k, readability-lxml for content extraction
+## Development Environment
 
-## Authentication & Security
-- **bcrypt**: Password hashing
-- **PyJWT**: JWT token handling
-- **OAuth Libraries**: google-auth, msal for multi-provider authentication
-- **Tornado Sessions**: Cookie-based session management
+### System Requirements
+- Claude Code CLI
+- Git repository
+- macOS (darwin platform)
 
-## Development Tools
-- **python-dotenv**: Environment variable management
-- **asyncio**: Async programming support
-- **logging**: Structured logging to files and console
+### Project Dependencies
+- Claude Code slash commands (.claude/commands/)
+- File system access for steering/spec management
+- No external package dependencies (pure markdown/JSON system)
+- TodoWrite tool integration for task management
 
-## Common Commands
+### Language Specifications
+- **Thinking**: English (internal processing)
+- **Responses**: Japanese (user-facing content)
+- **Documentation**: Bilingual with Japanese emphasis
 
-### Environment Setup
+### Task Tracking Approach
+- **Manual Progress**: Checkbox manipulation in tasks.md files
+- **Automatic Parsing**: Progress percentage calculation from checkboxes
+- **Enhanced Tracking**: Improved hook error resolution and progress monitoring
+- **TodoWrite Integration**: Active task management during implementation
+
+## Key Commands
+
+### Steering Commands
 ```bash
-# Setup virtual environments and dependencies
-./setup_venvs.sh
-
-# Activate backend environment
-./activate_backend.sh
+/steering-init          # Generate initial steering documents
+/steering-update        # Update steering after changes  
+/steering-custom        # Create custom steering for specialized contexts
 ```
 
-### Development
+### Specification Commands
 ```bash
-# Start development server
-cd backend && ./run.sh
-
-# Test API endpoints
-./backend/test_api.sh
-
-# Test DeepSeek integration
-python ./backend/test_deepseek_api.py
+/spec-init [feature-name]           # Initialize spec structure only
+/spec-requirements [feature-name]   # Generate requirements
+/spec-design [feature-name]         # Generate technical design
+/spec-tasks [feature-name]          # Generate implementation tasks
+/spec-status [feature-name]         # Check current progress and phases
 ```
 
-### Services
-```bash
-# Start MongoDB (install locally first)
-# macOS: brew services start mongodb-community
-# Ubuntu: sudo systemctl start mongod
+## File Structure
+```
+.kiro/
+├── steering/           # Project steering documents
+│   ├── product.md     # Product overview
+│   ├── tech.md        # Technology stack
+│   └── structure.md   # Code organization
+├── specs/             # Feature specifications
+│   └── [feature]/
+│       ├── spec.json      # Spec metadata and approval status
+│       ├── requirements.md # Feature requirements
+│       ├── design.md      # Technical design
+│       └── tasks.md       # Implementation tasks
 
-# Start Meilisearch (Docker)
-docker-compose up -d
+.claude/
+└── commands/          # Slash command definitions
+    ├── spec-init.md
+    ├── spec-requirements.md
+    ├── spec-design.md
+    ├── spec-tasks.md
+    ├── spec-status.md
+    ├── steering-init.md
+    ├── steering-update.md
+    └── steering-custom.md
 
-# Check service health
-curl http://localhost:8100/health
+docs/                  # Comprehensive documentation
+├── claude-code/       # Claude Code specific guides
+│   ├── hooks-guide.md # Hook system implementation
+│   ├── hooks.md       # Hook reference
+│   └── slash-commands.md # Command reference
+└── kiro/              # Kiro IDE reference and examples
+    ├── llms.txt       # Kiro IDE documentation
+    ├── specs-example/ # Example specifications
+    └── steering-example/ # Example steering documents
+
+README.md             # Japanese user documentation with workflow diagrams
 ```
 
-### Production
-```bash
-# Production deployment
-cd backend
-uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:application
-```
+## Integration Points
+- **Claude Code CLI**: Primary interface for all commands
+- **Git**: Version control for specs and steering
+- **File System**: Markdown file management
+- **Hooks System**: Automated tracking and compliance
+- **TodoWrite Tool**: Task progress tracking and management
 
-## Configuration
-- Environment variables in `backend/.env` (copy from `.env.example`)
-- Default ports: Backend (8100), Meilisearch (7701), MongoDB (27017)
-- UV package manager for dependency management (pyproject.toml + requirements.txt)
+## Development Workflow
+1. Initialize project steering with `/steering-init`
+2. Create feature specifications with `/spec-init`
+3. Follow 3-phase approval process (Requirements → Design → Tasks)
+4. Implement with manual task tracking via checkbox manipulation
+5. Monitor progress with `/spec-status`
+6. Update steering as needed with `/steering-update`
+
+## Task Progress Management
+- **Manual Tracking**: Update tasks.md checkboxes during implementation
+- **Progress Calculation**: Automatic percentage computation from checkbox states  
+- **Enhanced Monitoring**: Improved hook error resolution and progress tracking
+- **Status Monitoring**: Use `/spec-status` for current progress overview
+- **TodoWrite Integration**: Track active work items during development sessions
+
+## Security & Access
+- Local file system based
+- No external dependencies
+- Git-based version control
+- Manual approval gates for phase transitions

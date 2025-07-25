@@ -1,99 +1,185 @@
-# Project Structure
+# Code Structure & Organization
 
-## Root Directory
-```
-├── backend/                 # Python backend application
-├── web/                     # Nginx configuration
-├── scripts/                 # Utility scripts
-├── .kiro/                   # Kiro IDE configuration
-├── docker-compose.yml       # Meilisearch service
-└── setup_venvs.sh          # Environment setup script
-```
+## Directory Structure
 
-## Backend Architecture (`backend/`)
-
-### Application Structure
+### Root Level
 ```
-backend/
-├── app/                     # Main application package
-│   ├── handler/            # HTTP request handlers (controllers)
-│   ├── service/            # Business logic services
-│   ├── research/           # AI research and web search modules
-│   └── tornado_main.py     # Application entry point
-├── templates/              # HTML templates
-├── .env                    # Environment configuration
-├── pyproject.toml          # Modern Python project config
-├── requirements.txt        # Dependencies
-├── run.sh                  # Development server script
-└── wsgi.py                 # Production WSGI entry point
+/
+├── .kiro/              # Kiro spec-driven development system
+├── .claude/            # Claude Code slash commands
+├── docs/               # Comprehensive documentation and examples
+├── CLAUDE.md           # Claude Code instructions and project overview
+├── README.md           # Japanese user documentation with workflow diagrams
+└── .gitignore          # Git ignore file
 ```
 
-### Handler Layer (`app/handler/`)
-- **Purpose**: HTTP request handling and response formatting
-- **Pattern**: One handler per major feature area
-- **Key Files**:
-  - `chat_handler.py` - Chat messaging (streaming + legacy)
-  - `auth_handler.py` - Authentication and OAuth
-  - `search_handler.py` - Content search
-  - `deep_search_handler.py` - Advanced AI research
-  - `admin_handler.py` - Admin dashboard
-  - `main_handler.py` - Main page and 404 handling
-
-### Service Layer (`app/service/`)
-- **Purpose**: Business logic and external API integration
-- **Pattern**: Async-first design with proper error handling
-- **Key Files**:
-  - `deepseek_service.py` - AI API integration with streaming
-  - `mongodb_service.py` - Database operations
-  - `search_service.py` - Meilisearch integration
-  - `message_formatter.py` - Response formatting utilities
-
-### Research Module (`app/research/`)
-- **Purpose**: Advanced AI research and web search capabilities
-- **Pattern**: Modular components with clear interfaces
-- **Key Files**:
-  - `orchestrator.py` - Research workflow coordination
-  - `web_search.py` - Web search integration
-  - `content_extractor.py` - Web content processing
-  - `ai_reasoning.py` - AI reasoning logic
-
-## Code Organization Patterns
-
-### Handler Pattern
-```python
-class ExampleHandler(tornado.web.RequestHandler):
-    async def post(self):
-        # 1. Parse and validate request
-        # 2. Call service layer
-        # 3. Format and return response
+### .kiro Directory
+```
+.kiro/
+├── steering/           # Project steering documents
+│   ├── product.md     # Product overview, features, use cases
+│   ├── tech.md        # Architecture, tech stack, commands
+│   ├── structure.md   # This file - code organization
+│   └── *.md           # Custom steering documents
+└── specs/             # Feature specifications
+    ├── examples-pdf-diagram-explanation-app/
+    ├── rubiks-cube-solver-app/
+    ├── sangiiin-senkyo-realtime-app/
+    └── [feature-name]/
+        ├── spec.json      # Metadata and approval status
+        ├── requirements.md # User requirements
+        ├── design.md      # Technical design
+        └── tasks.md       # Implementation tasks
 ```
 
-### Service Pattern
-```python
-class ExampleService:
-    def __init__(self):
-        # Initialize with dependencies
-    
-    async def process_request(self, data):
-        # Async business logic
-        # Error handling with logging
+### .claude Directory
+```
+.claude/
+└── commands/          # Slash command definitions
+    ├── spec-init.md
+    ├── spec-requirements.md
+    ├── spec-design.md
+    ├── spec-tasks.md
+    ├── spec-status.md
+    ├── steering-init.md
+    ├── steering-update.md
+    └── steering-custom.md
 ```
 
-### Configuration
-- Environment variables in `.env` file
-- Logging configured in `tornado_main.py`
-- MongoDB indexes created automatically
-- Stream queues managed at application level
+### docs Directory
+```
+docs/
+├── claude-code/       # Claude Code specific documentation
+│   ├── hooks-guide.md # Implementation guide for hooks system
+│   ├── hooks.md       # Hook system reference
+│   └── slash-commands.md # Slash commands reference
+└── kiro/              # Kiro IDE reference and examples
+    ├── llms.txt       # Comprehensive Kiro IDE documentation
+    ├── specs-example/ # Example specifications for reference
+    │   ├── pdf-drawing-explainer/
+    │   │   ├── design.md
+    │   │   ├── requirements.md
+    │   │   └── tasks.md
+    │   └── task-management-service/
+    │       ├── design.md
+    │       ├── requirements.md
+    │       └── tasks.md
+    └── steering-example/ # Example steering documents
+        ├── product.md
+        ├── structure.md
+        └── tech.md
+```
 
-## File Naming Conventions
-- **Handlers**: `*_handler.py` (e.g., `chat_handler.py`)
-- **Services**: `*_service.py` (e.g., `deepseek_service.py`)
-- **Tests**: `test_*.py` (e.g., `test_deepseek_api.py`)
-- **Scripts**: Descriptive names with `.sh` or `.py` extension
-- **Templates**: `.html` files in `templates/` directory
+## Naming Conventions
 
-## Import Patterns
-- Relative imports within app package: `from app.service.mongodb_service import MongoDBService`
-- External libraries imported at top of file
-- Environment variables loaded via `python-dotenv`
-- Logging configured per module: `logger = logging.getLogger(__name__)`
+### Specifications
+- **Feature Names**: Kebab-case (e.g., `pdf-diagram-explanation-app`)
+- **Spec Files**: Fixed names within feature directories
+  - `spec.json` - Metadata file
+  - `requirements.md` - Requirements document
+  - `design.md` - Technical design
+  - `tasks.md` - Implementation tasks
+
+### Steering Documents
+- **Core Files**: Lowercase with `.md` extension
+  - `product.md`, `tech.md`, `structure.md`
+- **Custom Steering**: Descriptive names
+  - `api-standards.md`, `testing-approach.md`, etc.
+
+### Commands
+- **Format**: Slash prefix with kebab-case
+- **Pattern**: `/[action]-[target]`
+- Examples: `/steering-init`, `/spec-requirements`
+
+### Documentation Files
+- **README.md**: User-facing documentation (Japanese)
+- **llms.txt**: Reference documentation for Kiro IDE
+- **Example directories**: Kebab-case with descriptive names
+
+## File Patterns
+
+### Markdown Files
+- **Headers**: Use proper hierarchy (# for main, ## for sections)
+- **Lists**: Use consistent formatting (- for bullets)
+- **Code Blocks**: Triple backticks with language identifier
+
+### JSON Files (spec.json)
+```json
+{
+  "feature_name": "feature-name",
+  "project_description": "Description of the feature",
+  "created_at": "ISO-8601 timestamp",
+  "updated_at": "ISO-8601 timestamp",
+  "language": "japanese|english",
+  "phase": "requirements-generated|design-generated|tasks-generated|implementation",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": false
+    },
+    "design": {
+      "generated": true,
+      "approved": false
+    },
+    "tasks": {
+      "generated": true,
+      "approved": false
+    }
+  },
+  "progress": {
+    "requirements": 100,
+    "design": 100,
+    "tasks": 100
+  },
+  "ready_for_implementation": false
+}
+```
+
+## Code Organization Principles
+
+1. **Separation of Concerns**
+   - Steering: Project-wide context
+   - Specs: Feature-specific planning
+   - Docs: Reference documentation
+
+2. **Progressive Disclosure**
+   - Start with high-level steering
+   - Drill down to specific specs
+   - Implementation follows approval
+
+3. **Version Control**
+   - All markdown files tracked in Git
+   - Approval status in spec.json
+   - Changes tracked through commits
+
+4. **Automation Points**
+   - Slash commands enforce workflow
+   - Status tracking through spec.json
+   - Phase progression validation
+
+## Best Practices
+
+1. **File Creation**
+   - Always use commands to create specs
+   - Manual steering updates allowed
+   - Keep files focused and concise
+
+2. **Directory Management**
+   - One directory per feature spec
+   - Flat structure within directories
+   - No nested feature specs
+
+3. **Content Guidelines**
+   - Clear, actionable language
+   - Consistent formatting
+   - Regular updates to steering
+   - **Language Standards**:
+     - Internal thinking: English
+     - User-facing content: Japanese
+     - Technical documentation: Bilingual with context-appropriate language
+
+4. **Workflow Compliance**
+   - Follow 3-phase approval process
+   - Update spec.json for approvals
+   - **Manual task tracking**: Update tasks.md checkboxes during implementation
+   - Monitor progress with `/spec-status`

@@ -1506,6 +1506,470 @@ class EnhancedGoogleWebSearchService:
             logger.error(f"❌ Google search failed: {e}")
             return []
 
+class EnhancedScoreCalculator:
+    """Enhanced score calculation with maximum iteration score logic"""
+    
+    def __init__(self):
+        self.iteration_scores = []
+        self.threshold = 7  # Default target threshold
+    
+    def add_iteration_score(self, score: int) -> None:
+        """Add a score from an iteration"""
+        if isinstance(score, (int, float)) and score > 0:
+            self.iteration_scores.append(int(score))
+    
+    def get_final_score(self) -> int:
+        """Get the maximum score from all iterations"""
+        if not self.iteration_scores:
+            return 0
+        return max(self.iteration_scores)
+    
+    def is_target_achieved(self, threshold: int = None) -> bool:
+        """Check if target threshold is achieved"""
+        target = threshold or self.threshold
+        return self.get_final_score() >= target
+    
+    def get_score_progression(self) -> list:
+        """Get the progression of scores across iterations"""
+        return self.iteration_scores.copy()
+    
+    def get_calculation_summary(self) -> dict:
+        """Get a summary of the score calculation"""
+        return {
+            'final_relevance_score': self.get_final_score(),
+            'target_achieved': self.is_target_achieved(),
+            'score_progression': self.get_score_progression(),
+            'iterations_with_scores': len(self.iteration_scores),
+            'calculation_method': 'maximum_iteration_score'
+        }
+
+class RobustAPIResponseParser:
+    """Robust parsing of DeepSeek API responses with fallback handling"""
+    
+    def __init__(self):
+        self.relevance_patterns = [
+            r'OVERALL_RELEVANCE_SCORE:\s*(\d+)',
+            r'relevance.*?score.*?[\s:]*(\d+)',
+            r'score.*?[\s:]*(\d+)(?:/10)?',
+            r'(\d+)(?:/10)?\s*(?:out of 10|relevance)',
+        ]
+    
+    def parse_analysis_response(self, response_text: str) -> dict:
+        """Parse DeepSeek API response with fallback handling"""
+        if not response_text:
+            return self._create_fallback_response("Empty response", response_text)
+        
+        # Try direct JSON parsing first
+        try:
+            if response_text.strip().startswith('{') and response_text.strip().endswith('}'):
+                parsed = json.loads(response_text)
+                # Validate it has expected structure
+                if isinstance(parsed, dict):
+                    return self._enhance_parsed_response(parsed, response_text)
+        except json.JSONDecodeError:
+            logger.warning("JSON parsing failed, attempting text extraction")
+        
+        # Extract structured data from text response
+        return self._extract_from_text_response(response_text)
+    
+    def _enhance_parsed_response(self, parsed: dict, original_text: str) -> dict:
+        """Enhance parsed JSON response with extracted data"""
+        # Ensure overall_relevance_score is present
+        if 'overall_relevance_score' not in parsed:
+            extracted_score = self._extract_relevance_score(original_text)
+            if extracted_score > 0:
+                parsed['overall_relevance_score'] = extracted_score
+        
+        parsed['parsing_method'] = 'json_parsed'
+        return parsed
+    
+    def _extract_from_text_response(self, text: str) -> dict:
+        """Extract key components from text-based responses"""
+        relevance_score = self._extract_relevance_score(text)
+        confidence_indicators = self._extract_confidence_markers(text)
+        
+        return {
+            'analysis_content': text,
+            'overall_relevance_score': relevance_score,
+            'confidence_indicators': confidence_indicators,
+            'parsing_method': 'text_extraction',
+            'original_response_length': len(text),
+            'extraction_success': relevance_score > 0
+        }
+    
+    def _extract_relevance_score(self, text: str) -> int:
+        """Extract relevance score using multiple patterns"""
+        for pattern in self.relevance_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    score = int(match.group(1))
+                    if 0 <= score <= 10:
+                        return score
+                except (ValueError, IndexError):
+                    continue
+        
+        # Fallback: estimate score based on content quality indicators
+        return self._estimate_score_from_content(text)
+    
+    def _estimate_score_from_content(self, text: str) -> int:
+        """Estimate relevance score based on content quality indicators"""
+        if not text or len(text.strip()) < 50:
+            return 0
+        
+        quality_indicators = [
+            'comprehensive analysis',
+            'key findings',
+            'statistics',
+            'market share',
+            'revenue',
+            'data shows',
+            'according to',
+            'research indicates'
+        ]
+        
+        found_indicators = sum(1 for indicator in quality_indicators 
+                              if indicator.lower() in text.lower())
+        
+        # Score based on content length and quality indicators
+        length_score = min(3, len(text) // 500)  # Up to 3 points for length
+        indicator_score = min(5, found_indicators)  # Up to 5 points for indicators
+        
+        return min(8, max(2, length_score + indicator_score))
+    
+    def _extract_confidence_markers(self, text: str) -> list:
+        """Extract confidence-indicating phrases from text"""
+        confidence_patterns = [
+            r'high confidence',
+            r'strongly indicates',
+            r'clear evidence',
+            r'definitive data',
+            r'comprehensive coverage',
+            r'partial information',
+            r'limited data',
+            r'unclear',
+            r'insufficient'
+        ]
+        
+        markers = []
+        for pattern in confidence_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                markers.append(pattern.replace('r\'', '').replace('\'', ''))
+        
+        return markers
+    
+    def _create_fallback_response(self, error_reason: str, original_text: str) -> dict:
+        """Create fallback response when parsing completely fails"""
+        return {
+            'analysis_content': original_text[:1000] if original_text else 'No content available',
+            'overall_relevance_score': 1,  # Minimal score to indicate failure
+            'parsing_method': 'fallback',
+            'error_reason': error_reason,
+            'confidence_indicators': [],
+            'extraction_success': False
+        }
+
+class EnhancedDisplayFormatter:
+    """Enhanced display formatting for comprehensive analysis"""
+    
+    def __init__(self):
+        self.section_patterns = {
+            'executive_summary': [
+                r'executive summary[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)',
+                r'summary[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)',
+                r'overview[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)'
+            ],
+            'key_findings': [
+                r'key findings?[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)',
+                r'main findings?[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)',
+                r'findings?[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)'
+            ],
+            'statistical_data': [
+                r'statistics?[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)',
+                r'data[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)',
+                r'numbers?[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)',
+                r'metrics?[:\s]*(.+?)(?=\n\n|\n[A-Z]|$)'
+            ]
+        }
+    
+    def format_comprehensive_analysis(self, analysis_data: dict) -> str:
+        """Format comprehensive analysis for prominent display"""
+        if not analysis_data:
+            return "📋 COMPREHENSIVE ANALYSIS:\n❌ No analysis data available"
+        
+        content = analysis_data.get('analysis_content', '') or analysis_data.get('comprehensive_answer', '')
+        
+        if not content:
+            return "📋 COMPREHENSIVE ANALYSIS:\n❌ No analysis content available"
+        
+        # Extract structured sections
+        sections = self._extract_analysis_sections(content)
+        
+        formatted_output = []
+        formatted_output.append("📋 COMPREHENSIVE ANALYSIS SUMMARY:")
+        formatted_output.append("=" * 60)
+        
+        # Add relevance score prominently
+        relevance_score = analysis_data.get('overall_relevance_score', 0)
+        parsing_method = analysis_data.get('parsing_method', 'unknown')
+        formatted_output.append(f"🎯 Relevance Score: {relevance_score}/10 (Method: {parsing_method})")
+        formatted_output.append("")
+        
+        # Add structured sections if found
+        if sections.get('executive_summary'):
+            formatted_output.append("🎯 Executive Summary:")
+            formatted_output.append(self._format_section_content(sections['executive_summary']))
+            formatted_output.append("")
+        
+        if sections.get('key_findings'):
+            formatted_output.append("📊 Key Findings:")
+            formatted_output.append(self._format_section_content(sections['key_findings']))
+            formatted_output.append("")
+        
+        if sections.get('statistical_data'):
+            formatted_output.append("📈 Statistical Data:")
+            formatted_output.append(self._format_section_content(sections['statistical_data']))
+            formatted_output.append("")
+        
+        # If no structured sections found, show first part of content
+        if not any(sections.values()):
+            formatted_output.append("📄 Analysis Content:")
+            preview = self._create_content_preview(content)
+            formatted_output.append(preview)
+        
+        # Add confidence indicators if available
+        confidence_indicators = analysis_data.get('confidence_indicators', [])
+        if confidence_indicators:
+            formatted_output.append("🔍 Confidence Indicators:")
+            for indicator in confidence_indicators[:3]:  # Show top 3
+                formatted_output.append(f"  • {indicator}")
+            formatted_output.append("")
+        
+        return "\n".join(formatted_output)
+    
+    def _extract_analysis_sections(self, content: str) -> dict:
+        """Extract structured sections from analysis content"""
+        sections = {}
+        
+        for section_name, patterns in self.section_patterns.items():
+            for pattern in patterns:
+                match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+                if match:
+                    section_content = match.group(1).strip()
+                    if len(section_content) > 20:  # Minimum content length
+                        sections[section_name] = section_content
+                        break
+        
+        return sections
+    
+    def _format_section_content(self, content: str) -> str:
+        """Format section content for better readability"""
+        # Clean up the content
+        content = content.strip()
+        
+        # Add bullet points if content looks like a list
+        if '\n-' in content or content.count('.') > 2:
+            lines = content.split('\n')
+            formatted_lines = []
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('•') and not line.startswith('-'):
+                    if line.endswith('.') or line.endswith(':'):
+                        formatted_lines.append(f"  • {line}")
+                    else:
+                        formatted_lines.append(f"    {line}")
+                elif line:
+                    formatted_lines.append(f"  {line}")
+            content = '\n'.join(formatted_lines)
+        else:
+            # Indent single paragraph
+            content = f"  {content}"
+        
+        return content
+    
+    def _create_content_preview(self, content: str) -> str:
+        """Create a preview of the content when no sections are found"""
+        # Take first 800 characters and try to break at sentence boundary
+        preview = content[:800]
+        if len(content) > 800:
+            # Try to break at last sentence
+            last_period = preview.rfind('.')
+            if last_period > 400:  # Only if we have substantial content before the period
+                preview = preview[:last_period + 1]
+            preview += "\n  [... content continues ...]"
+        
+        # Indent the preview
+        lines = preview.split('\n')
+        indented_lines = [f"  {line}" if line.strip() else line for line in lines]
+        return '\n'.join(indented_lines)
+    
+    def format_simple_analysis(self, analysis_data: dict) -> str:
+        """Simple fallback formatting when structured parsing fails"""
+        if not analysis_data:
+            return "📋 ANALYSIS: No data available"
+        
+        content = analysis_data.get('analysis_content', '') or analysis_data.get('comprehensive_answer', '')
+        score = analysis_data.get('overall_relevance_score', 0)
+        
+        formatted = [
+            "📋 ANALYSIS SUMMARY:",
+            f"Score: {score}/10",
+            ""
+        ]
+        
+        if content:
+            preview = content[:1000]
+            if len(content) > 1000:
+                preview += "..."
+            formatted.append(f"Content: {preview}")
+        else:
+            formatted.append("Content: No analysis content available")
+        
+        return "\n".join(formatted)
+
+class SuccessValidator:
+    """Multi-criteria success determination validator"""
+    
+    def __init__(self):
+        self.relevance_threshold = 7  # Default threshold
+        self.min_sources_threshold = 3  # Minimum sources for success
+        self.min_content_length = 200  # Minimum analysis content length
+    
+    def determine_research_success(self, metrics: dict, analysis: dict, sources: list = None) -> dict:
+        """Comprehensive success determination logic"""
+        relevance_score = metrics.get('final_relevance_score', 0)
+        sources = sources or []
+        
+        # Multiple success criteria
+        criteria = {
+            'relevance_threshold_met': relevance_score >= self.relevance_threshold,
+            'analysis_content_available': self._has_substantial_analysis(analysis),
+            'sources_processed': len(sources) >= self.min_sources_threshold,
+            'statistical_data_found': self._has_statistical_data(analysis),
+            'parsing_successful': self._was_parsing_successful(analysis),
+            'content_quality_adequate': self._has_quality_content(analysis)
+        }
+        
+        # Calculate success score (0.0 to 1.0)
+        success_score = sum(criteria.values()) / len(criteria)
+        
+        # Determine overall success level
+        success_level = self._classify_success_level(success_score)
+        overall_success = success_score >= 0.75
+        
+        return {
+            'overall_success': overall_success,
+            'success_level': success_level,
+            'success_score': success_score,
+            'criteria_met': criteria,
+            'success_reasoning': self._explain_success_determination(criteria, relevance_score, len(sources)),
+            'recommendations': self._generate_recommendations(criteria, relevance_score, len(sources))
+        }
+    
+    def _has_substantial_analysis(self, analysis: dict) -> bool:
+        """Check if analysis has substantial content"""
+        if not analysis:
+            return False
+        
+        content = analysis.get('analysis_content', '') or analysis.get('comprehensive_answer', '')
+        return len(content.strip()) >= self.min_content_length
+    
+    def _has_statistical_data(self, analysis: dict) -> bool:
+        """Check if analysis contains statistical data"""
+        if not analysis:
+            return False
+        
+        content = (analysis.get('analysis_content', '') or analysis.get('comprehensive_answer', '')).lower()
+        
+        statistical_indicators = [
+            'percent', '%', 'statistics', 'data shows', 'according to',
+            'revenue', 'market share', 'users', 'million', 'billion',
+            'growth', 'increase', 'decrease', 'ratio', 'rate'
+        ]
+        
+        return any(indicator in content for indicator in statistical_indicators)
+    
+    def _was_parsing_successful(self, analysis: dict) -> bool:
+        """Check if response parsing was successful"""
+        if not analysis:
+            return False
+            
+        parsing_method = analysis.get('parsing_method', 'unknown')
+        return parsing_method in ['json_parsed', 'text_extraction'] and parsing_method != 'fallback'
+    
+    def _has_quality_content(self, analysis: dict) -> bool:
+        """Check if content meets quality standards"""
+        if not analysis:
+            return False
+        
+        content = analysis.get('analysis_content', '') or analysis.get('comprehensive_answer', '')
+        
+        # Check for quality indicators
+        quality_indicators = [
+            'comprehensive', 'analysis', 'findings', 'research',
+            'evidence', 'data', 'results', 'conclusion'
+        ]
+        
+        indicator_count = sum(1 for indicator in quality_indicators 
+                             if indicator.lower() in content.lower())
+        
+        # Quality based on length and indicator presence
+        return len(content) >= 300 and indicator_count >= 3
+    
+    def _classify_success_level(self, score: float) -> str:
+        """Classify success level based on score"""
+        if score >= 0.9:
+            return 'excellent'
+        elif score >= 0.75:
+            return 'full'
+        elif score >= 0.5:
+            return 'partial'
+        else:
+            return 'failed'
+    
+    def _explain_success_determination(self, criteria: dict, relevance_score: int, source_count: int) -> str:
+        """Provide explanation for success determination"""
+        met_criteria = [key for key, value in criteria.items() if value]
+        failed_criteria = [key for key, value in criteria.items() if not value]
+        
+        explanation = []
+        explanation.append(f"Research evaluation based on {len(criteria)} criteria:")
+        explanation.append(f"✅ Met: {len(met_criteria)}/{len(criteria)} criteria")
+        
+        if met_criteria:
+            explanation.append(f"Successful areas: {', '.join(met_criteria[:3])}")
+        
+        if failed_criteria:
+            explanation.append(f"Areas needing improvement: {', '.join(failed_criteria[:3])}")
+        
+        explanation.append(f"Relevance score: {relevance_score}/10, Sources: {source_count}")
+        
+        return " | ".join(explanation)
+    
+    def _generate_recommendations(self, criteria: dict, relevance_score: int, source_count: int) -> list:
+        """Generate recommendations for improvement"""
+        recommendations = []
+        
+        if not criteria.get('relevance_threshold_met'):
+            recommendations.append(f"Improve relevance score (current: {relevance_score}, target: {self.relevance_threshold}+)")
+        
+        if not criteria.get('sources_processed'):
+            recommendations.append(f"Increase source count (current: {source_count}, target: {self.min_sources_threshold}+)")
+        
+        if not criteria.get('analysis_content_available'):
+            recommendations.append("Ensure comprehensive analysis generation")
+        
+        if not criteria.get('statistical_data_found'):
+            recommendations.append("Include more statistical data and quantitative findings")
+        
+        if not criteria.get('parsing_successful'):
+            recommendations.append("Improve API response parsing reliability")
+        
+        if not criteria.get('content_quality_adequate'):
+            recommendations.append("Enhance analysis content quality and depth")
+        
+        return recommendations
+
 class EnhancedDeepSeekResearchService:
     """Enhanced research service with optimization components, time management, and token optimization"""
     
@@ -1527,6 +1991,10 @@ class EnhancedDeepSeekResearchService:
         self.token_handler = TokenLimitHandler(self.token_optimizer)
         self.time_handler = TimeConstraintHandler(self.time_manager)
         self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=300)
+        self.score_calculator = EnhancedScoreCalculator()  # Enhanced score calculation
+        self.response_parser = RobustAPIResponseParser()  # Enhanced response parsing
+        self.display_formatter = EnhancedDisplayFormatter()  # Enhanced display formatting
+        self.success_validator = SuccessValidator()  # Enhanced success determination
         
         # Research session tracking
         self.current_session = None
@@ -2373,13 +2841,34 @@ SOURCES:
                 'statistical_summary': analysis.get('statistical_summary') if analysis else None
             }]
             
-            # Fix: Ensure consistent relevance scoring - add final_metrics with proper relevance score
+            # Extract and track relevance score from analysis
+            if analysis and 'overall_relevance_score' in analysis:
+                analysis_score = analysis['overall_relevance_score']
+                self.score_calculator.add_iteration_score(analysis_score)
+                logger.info(f"📊 Extracted relevance score from analysis: {analysis_score}/10")
+            else:
+                # Fallback scoring based on sources and success
+                fallback_score = min(8, max(3, len(all_sources))) if all_sources else 0
+                self.score_calculator.add_iteration_score(fallback_score)
+                logger.warning(f"⚠️ Using fallback relevance score: {fallback_score}/10")
+            
+            # Calculate final metrics using enhanced score calculator and success validator
             total_duration = time.time() - session_start
+            score_summary = self.score_calculator.get_calculation_summary()
+            
+            # Enhanced success determination
+            success_evaluation = self.success_validator.determine_research_success(
+                score_summary, analysis, all_sources
+            )
+            
             results['final_metrics'] = {
-                'final_relevance_score': current_relevance,
-                'target_achieved': current_relevance >= target_relevance,
+                'final_relevance_score': score_summary['final_relevance_score'],
+                'target_achieved': score_summary['target_achieved'],
                 'iterations_completed': current_iteration,
-                'total_duration': total_duration
+                'total_duration': total_duration,
+                'score_progression': score_summary['score_progression'],
+                'calculation_method': score_summary['calculation_method'],
+                'success_evaluation': success_evaluation
             }
             
             return results
@@ -2522,22 +3011,19 @@ Format your response as JSON with the following structure:
             
             result_text = response.choices[0].message.content.strip()
             
-            # Try to parse JSON response
-            try:
-                analysis_result = json.loads(result_text)
-                analysis_result['sources_analyzed'] = len(sources)
-                analysis_result['token_optimization_applied'] = token_count > self.token_optimizer.max_tokens
-                return analysis_result
-            except json.JSONDecodeError:
-                # Fallback: return structured response
-                return {
-                    'comprehensive_answer': result_text,
-                    'overall_relevance_score': 7,
-                    'confidence_score': 0.6,
-                    'sources_analyzed': len(sources),
-                    'token_optimization_applied': token_count > self.token_optimizer.max_tokens,
-                    'parsing_note': 'JSON parsing failed, returned raw response'
-                }
+            # Use robust API response parser
+            analysis_result = self.response_parser.parse_analysis_response(result_text)
+            analysis_result['token_optimization_applied'] = token_count > self.token_optimizer.max_tokens
+            analysis_result['sources_analyzed'] = len(sources)
+            
+            # Add statistical summary if available
+            if 'comprehensive_answer' in analysis_result:
+                analysis_result['analysis_content'] = analysis_result.get('comprehensive_answer', result_text)
+            else:
+                analysis_result['analysis_content'] = result_text
+            
+            logger.info(f"📊 Analysis parsed using method: {analysis_result.get('parsing_method', 'unknown')}")
+            return analysis_result
                 
         except asyncio.TimeoutError:
             logger.warning("⏰ Analysis timeout, generating emergency response")
@@ -2796,15 +3282,15 @@ async def test_enhanced_research():
         print(statistical_summary['summary_text'])
         print_separator("⭐", 100)
     
-    # Display final analysis
+    # Display enhanced comprehensive analysis
     if results['iterations']:
         final_iteration = results['iterations'][-1]
         final_analysis = final_iteration['steps']['step4']['analysis']
         
         print_separator("-", 80)
-        print("📋 FINAL COMPREHENSIVE ANALYSIS:")
-        analysis_content = final_analysis.get('analysis_content', 'No analysis available')
-        print(analysis_content[:1500] + "..." if len(analysis_content) > 1500 else analysis_content)
+        # Use enhanced display formatter for better analysis presentation
+        formatted_analysis = service.display_formatter.format_comprehensive_analysis(final_analysis)
+        print(formatted_analysis)
     
     # Display progressive answer
     progressive_answer = final_metrics.get('progressive_answer', {})
@@ -2821,21 +3307,54 @@ async def test_enhanced_research():
     
     print_separator("=", 100)
     
-    # Success/failure assessment
-    if target_achieved:
-        print("🎉 SUCCESS: Target relevance score achieved with Statistical Summary generation (v3.07)!")
-        print(f"✅ Research completed with {final_score}/10 relevance (≥{target_relevance} required)")
-        print(f"📊 Statistical summary generated: {statistical_summary.get('summary_type', 'not_available').title()} analysis")
+    # Enhanced Success/failure assessment
+    success_evaluation = final_metrics.get('success_evaluation', {})
+    if success_evaluation:
+        success_level = success_evaluation.get('success_level', 'unknown')
+        overall_success = success_evaluation.get('overall_success', False)
+        success_reasoning = success_evaluation.get('success_reasoning', '')
+        recommendations = success_evaluation.get('recommendations', [])
+        
+        # Display success status with enhanced information
+        if overall_success:
+            if success_level == 'excellent':
+                print("🎉 EXCELLENT SUCCESS: Research exceeded expectations!")
+            else:
+                print("✅ SUCCESS: Research completed successfully!")
+        else:
+            if success_level == 'partial':
+                print("⚠️ PARTIAL SUCCESS: Research partially completed")
+            else:
+                print("❌ RESEARCH INCOMPLETE: Significant issues identified")
+        
+        print(f"📊 Success Level: {success_level.title()}")
+        print(f"🎯 Final Score: {final_score}/10 (Target: {target_relevance}/10)")
+        
+        # Show success reasoning
+        if success_reasoning:
+            print(f"📋 Evaluation: {success_reasoning}")
+        
+        # Show recommendations if any
+        if recommendations:
+            print("💡 Recommendations for improvement:")
+            for i, rec in enumerate(recommendations[:3], 1):  # Show top 3
+                print(f"   {i}. {rec}")
+        
+        # Show cache performance
         if cache_performance.get('cache_hits', 0) > 0:
             print(f"💾 Cache optimization: {cache_performance.get('cache_hits', 0)} URLs served from cache")
         cache_misses = cache_performance.get('cache_misses', 0)
         if cache_misses > 0:
             print(f"🌐 Bright Data API calls: {cache_misses} URLs extracted via API")
     else:
-        print("⚠️ PARTIAL SUCCESS: Target relevance not fully achieved")
-        print(f"📊 Final score: {final_score}/10 (Target: {target_relevance}/10)")
-        print(f"📊 Statistical summary: {statistical_summary.get('summary_type', 'not_available').title()} analysis generated")
-        print("💡 Consider running additional iterations or refining the research question")
+        # Fallback to original logic if success evaluation is missing
+        if target_achieved:
+            print("🎉 SUCCESS: Target relevance score achieved!")
+            print(f"✅ Research completed with {final_score}/10 relevance (≥{target_relevance} required)")
+        else:
+            print("⚠️ PARTIAL SUCCESS: Target relevance not fully achieved")
+            print(f"📊 Final score: {final_score}/10 (Target: {target_relevance}/10)")
+            print("💡 Consider running additional iterations or refining the research question")
     
     # Save comprehensive results with statistical summary
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
