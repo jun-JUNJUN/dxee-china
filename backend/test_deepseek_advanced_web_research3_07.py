@@ -1970,6 +1970,1057 @@ class SuccessValidator:
         
         return recommendations
 
+@dataclass
+class RelevanceEvaluation:
+    """関連性評価結果を格納するデータクラス"""
+    content_id: str
+    url: str
+    relevance_score: float  # 0-10スケール
+    evaluation_reason: str
+    meets_threshold: bool
+    evaluation_time: datetime
+    token_usage: int
+
+class RelevanceEvaluator:
+    """関連性評価システム - 70%閾値による高精度な関連性判定"""
+    
+    def __init__(self, api_client: AsyncOpenAI, threshold: float = 0.7):
+        """
+        初期化処理
+        
+        Args:
+            api_client: DeepSeek API クライアント
+            threshold: 関連性閾値 (0.7 = 70%)
+        """
+        self.api_client = api_client
+        self.threshold = threshold
+        self.evaluation_cache = {}  # URL -> RelevanceEvaluation のキャッシュ
+        self.logger = logging.getLogger(__name__)
+        
+        # 関連性評価用プロンプトテンプレート
+        self.evaluation_prompt_template = """
+質問: {question}
+
+コンテンツ:
+{content}
+
+情報源URL: {url}
+
+以下の指示に従って、このコンテンツの関連性を評価してください：
+
+1. **関連性スコア**: 質問に対するこのコンテンツの関連性を0-10のスケールで評価
+   - 0-3: 関連性が低い (質問とは無関係または間接的)
+   - 4-6: 中程度の関連性 (一部関連するが不完全)
+   - 7-10: 高い関連性 (質問に直接的に回答している)
+
+2. **評価理由**: スコアの根拠を具体的に説明
+
+以下の形式で回答してください：
+RELEVANCE_SCORE: [0-10の数値]
+REASON: [評価理由の詳細説明]
+"""
+    
+    async def evaluate_relevance(self, question: str, content: str, url: str) -> RelevanceEvaluation:
+        """
+        単一コンテンツの関連性を0-10スケールで評価
+        
+        Args:
+            question: 元の質問
+            content: 評価対象のコンテンツ
+            url: コンテンツの情報源URL
+            
+        Returns:
+            RelevanceEvaluation: 評価結果
+        """
+        # キャッシュチェック
+        cache_key = f"{hash(question)}_{hash(content)}_{url}"
+        if cache_key in self.evaluation_cache:
+            self.logger.info(f"✅ 関連性評価キャッシュヒット: {url}")
+            return self.evaluation_cache[cache_key]
+        
+        start_time = time.time()
+        content_id = f"content_{hash(content)}"
+        
+        try:
+            # プロンプト生成
+            prompt = self.evaluation_prompt_template.format(
+                question=question,
+                content=content[:2000],  # コンテンツを制限してトークン数を抑制
+                url=url
+            )
+            
+            # DeepSeek APIで関連性評価
+            response = await self.api_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "あなたは情報の関連性を正確に評価する専門家です。指定された形式で評価を行ってください。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=500,
+                temperature=0.1  # 一貫性のある評価のため低温度設定
+            )
+            
+            evaluation_text = response.choices[0].message.content
+            token_usage = response.usage.total_tokens if response.usage else 0
+            
+            # 評価結果をパース
+            score, reason = self._parse_evaluation_response(evaluation_text)
+            meets_threshold = score >= (self.threshold * 10)
+            
+            # 評価結果オブジェクト作成
+            evaluation = RelevanceEvaluation(
+                content_id=content_id,
+                url=url,
+                relevance_score=score,
+                evaluation_reason=reason,
+                meets_threshold=meets_threshold,
+                evaluation_time=datetime.now(),
+                token_usage=token_usage
+            )
+            
+            # キャッシュに保存
+            self.evaluation_cache[cache_key] = evaluation
+            
+            # ログ記録
+            processing_time = time.time() - start_time
+            self.logger.info(f"🎯 関連性評価完了: {url}")
+            self.logger.info(f"   スコア: {score}/10 {'✅' if meets_threshold else '❌'}")
+            self.logger.info(f"   処理時間: {processing_time:.2f}秒")
+            self.logger.info(f"   理由: {reason[:100]}...")
+            
+            return evaluation
+            
+        except Exception as e:
+            self.logger.error(f"❌ 関連性評価エラー: {url} - {e}")
+            # エラー時のフォールバック評価
+            return RelevanceEvaluation(
+                content_id=content_id,
+                url=url,
+                relevance_score=5.0,  # 中間スコア
+                evaluation_reason=f"評価エラーによりデフォルトスコア設定: {str(e)}",
+                meets_threshold=False,
+                evaluation_time=datetime.now(),
+                token_usage=0
+            )
+    
+    def _parse_evaluation_response(self, response_text: str) -> Tuple[float, str]:
+        """
+        DeepSeek APIの応答から関連性スコアと理由を抽出
+        
+        Args:
+            response_text: API応答テキスト
+            
+        Returns:
+            Tuple[float, str]: (関連性スコア, 評価理由)
+        """
+        try:
+            # スコア抽出
+            score_match = re.search(r'RELEVANCE_SCORE:\s*([0-9.]+)', response_text)
+            if score_match:
+                score = float(score_match.group(1))
+                score = max(0.0, min(10.0, score))  # 0-10の範囲に制限
+            else:
+                # パターンマッチング失敗時のフォールバック
+                score = self._extract_score_fallback(response_text)
+            
+            # 理由抽出
+            reason_match = re.search(r'REASON:\s*(.+)', response_text, re.DOTALL)
+            if reason_match:
+                reason = reason_match.group(1).strip()
+            else:
+                reason = "評価理由の抽出に失敗しました"
+            
+            return score, reason
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 評価応答パースエラー: {e}")
+            return 5.0, f"パースエラー: {str(e)}"
+    
+    def _extract_score_fallback(self, text: str) -> float:
+        """
+        フォールバック用のスコア抽出ロジック
+        
+        Args:
+            text: 応答テキスト
+            
+        Returns:
+            float: 推定関連性スコア
+        """
+        # 数値パターンを探索
+        numbers = re.findall(r'\b([0-9]|10)\b', text)
+        if numbers:
+            # 最初に見つかった0-10の数値を使用
+            potential_score = float(numbers[0])
+            if 0 <= potential_score <= 10:
+                return potential_score
+        
+        # 品質指標に基づく推定
+        quality_indicators = [
+            'excellent', 'perfect', 'highly relevant', '非常に関連',
+            'good', 'relevant', '関連', 'appropriate',
+            'poor', 'irrelevant', '無関係', 'unrelated'
+        ]
+        
+        text_lower = text.lower()
+        if any(indicator in text_lower for indicator in quality_indicators[:4]):
+            return 8.0  # 高評価
+        elif any(indicator in text_lower for indicator in quality_indicators[4:8]):
+            return 6.0  # 中評価
+        else:
+            return 3.0  # 低評価
+    
+    async def batch_evaluate(self, question: str, contents: List[Dict]) -> List[RelevanceEvaluation]:
+        """
+        複数コンテンツの一括関連性評価
+        
+        Args:
+            question: 元の質問
+            contents: 評価対象のコンテンツリスト (各要素は url, content, title を含む辞書)
+            
+        Returns:
+            List[RelevanceEvaluation]: 評価結果リスト
+        """
+        self.logger.info(f"🔄 バッチ関連性評価開始: {len(contents)}件")
+        
+        # 並列処理で評価を実行（最大5件同時処理）
+        semaphore = asyncio.Semaphore(5)
+        
+        async def evaluate_single(content_dict):
+            async with semaphore:
+                return await self.evaluate_relevance(
+                    question=question,
+                    content=content_dict.get('content', ''),
+                    url=content_dict.get('url', 'unknown')
+                )
+        
+        # 全ての評価を並列実行
+        evaluations = await asyncio.gather(
+            *[evaluate_single(content) for content in contents],
+            return_exceptions=True
+        )
+        
+        # エラーハンドリング
+        valid_evaluations = []
+        for i, evaluation in enumerate(evaluations):
+            if isinstance(evaluation, Exception):
+                self.logger.error(f"❌ バッチ評価エラー ({i}): {evaluation}")
+                # エラー時のデフォルト評価
+                valid_evaluations.append(RelevanceEvaluation(
+                    content_id=f"error_content_{i}",
+                    url=contents[i].get('url', 'unknown'),
+                    relevance_score=0.0,
+                    evaluation_reason=f"評価エラー: {str(evaluation)}",
+                    meets_threshold=False,
+                    evaluation_time=datetime.now(),
+                    token_usage=0
+                ))
+            else:
+                valid_evaluations.append(evaluation)
+        
+        # 結果サマリー
+        high_relevance_count = sum(1 for eval in valid_evaluations if eval.meets_threshold)
+        avg_score = sum(eval.relevance_score for eval in valid_evaluations) / len(valid_evaluations)
+        
+        self.logger.info(f"✅ バッチ評価完了:")
+        self.logger.info(f"   総数: {len(valid_evaluations)}件")
+        self.logger.info(f"   高関連性（70%以上）: {high_relevance_count}件")
+        self.logger.info(f"   平均スコア: {avg_score:.2f}/10")
+        
+        return valid_evaluations
+    
+    def meets_threshold(self, score: float) -> bool:
+        """
+        70%閾値チェック
+        
+        Args:
+            score: 関連性スコア (0-10)
+            
+        Returns:
+            bool: 閾値を満たすかどうか
+        """
+        return score >= (self.threshold * 10)
+    
+    def filter_high_relevance(self, evaluations: List[RelevanceEvaluation]) -> List[RelevanceEvaluation]:
+        """
+        70%以上の高関連性コンテンツのみをフィルタリング
+        
+        Args:
+            evaluations: 評価結果リスト
+            
+        Returns:
+            List[RelevanceEvaluation]: 高関連性評価結果リスト
+        """
+        high_relevance = [eval for eval in evaluations if eval.meets_threshold]
+        
+        self.logger.info(f"🎯 高関連性フィルタリング結果:")
+        self.logger.info(f"   入力: {len(evaluations)}件")
+        self.logger.info(f"   出力: {len(high_relevance)}件 (70%以上)")
+        
+        return high_relevance
+    
+    def get_evaluation_stats(self) -> Dict[str, Any]:
+        """
+        評価統計情報を取得
+        
+        Returns:
+            Dict[str, Any]: 統計情報
+        """
+        if not self.evaluation_cache:
+            return {"cache_size": 0, "stats": "評価履歴なし"}
+        
+        evaluations = list(self.evaluation_cache.values())
+        scores = [eval.relevance_score for eval in evaluations]
+        
+        return {
+            "cache_size": len(self.evaluation_cache),
+            "total_evaluations": len(evaluations),
+            "average_score": sum(scores) / len(scores),
+            "high_relevance_count": sum(1 for eval in evaluations if eval.meets_threshold),
+            "total_tokens_used": sum(eval.token_usage for eval in evaluations)
+        }
+
+@dataclass
+class AggregatedAnswer:
+    """集計済み回答を格納するデータクラス"""
+    content: str
+    relevance_score: float
+    source_urls: List[str]
+    confidence_level: str
+    extraction_time: datetime
+    is_deduplicated: bool
+    rank: int = 0
+
+class AnswerAggregator:
+    """高関連性回答の自動集計・ランキングシステム"""
+    
+    def __init__(self, deduplication_threshold: float = 0.8):
+        """
+        初期化処理
+        
+        Args:
+            deduplication_threshold: 重複判定閾値 (0.8 = 80%の類似度で重複とみなす)
+        """
+        self.deduplication_threshold = deduplication_threshold
+        self.aggregated_answers = []
+        self.logger = logging.getLogger(__name__)
+    
+    def aggregate_answers(self, evaluations: List[RelevanceEvaluation]) -> List[AggregatedAnswer]:
+        """
+        70%以上の関連性を持つ回答を集計しランキング
+        
+        Args:
+            evaluations: 関連性評価結果リスト
+            
+        Returns:
+            List[AggregatedAnswer]: 集計・ランキング済み回答リスト
+        """
+        self.logger.info(f"🔄 回答集計開始: {len(evaluations)}件")
+        
+        # 70%以上の高関連性評価のみを抽出
+        high_relevance_evaluations = [eval for eval in evaluations if eval.meets_threshold]
+        
+        if not high_relevance_evaluations:
+            self.logger.warning("❌ 70%以上の関連性を持つ回答がありません")
+            return []
+        
+        # 評価結果をAggregatedAnswerに変換
+        candidates = []
+        for eval in high_relevance_evaluations:
+            # コンテンツを取得（evaluationからは直接取得できないため、URLから推定）
+            content = f"高関連性コンテンツ (スコア: {eval.relevance_score}/10)"  # 実際のコンテンツは別途取得が必要
+            
+            aggregated = AggregatedAnswer(
+                content=content,
+                relevance_score=eval.relevance_score,
+                source_urls=[eval.url],
+                confidence_level=self._calculate_confidence_level(eval.relevance_score),
+                extraction_time=eval.evaluation_time,
+                is_deduplicated=False
+            )
+            candidates.append(aggregated)
+        
+        # 重複除去
+        deduplicated_answers = self.deduplicate_content(candidates)
+        
+        # 関連性スコア順にランキング
+        ranked_answers = self.rank_by_relevance(deduplicated_answers)
+        
+        self.aggregated_answers = ranked_answers
+        
+        self.logger.info(f"✅ 回答集計完了:")
+        self.logger.info(f"   入力: {len(evaluations)}件")
+        self.logger.info(f"   高関連性: {len(high_relevance_evaluations)}件")
+        self.logger.info(f"   重複除去後: {len(deduplicated_answers)}件")
+        self.logger.info(f"   最終ランキング: {len(ranked_answers)}件")
+        
+        return ranked_answers
+    
+    def deduplicate_content(self, answers: List[AggregatedAnswer]) -> List[AggregatedAnswer]:
+        """
+        重複コンテンツの除去
+        
+        Args:
+            answers: 集計対象の回答リスト
+            
+        Returns:
+            List[AggregatedAnswer]: 重複除去済み回答リスト
+        """
+        if len(answers) <= 1:
+            return answers
+        
+        deduplicated = []
+        processed_indices = set()
+        
+        for i, answer in enumerate(answers):
+            if i in processed_indices:
+                continue
+            
+            # 同じ回答と類似する回答を検索
+            similar_answers = [answer]
+            similar_indices = {i}
+            
+            for j, other_answer in enumerate(answers[i+1:], i+1):
+                if j in processed_indices:
+                    continue
+                
+                # 類似度計算（簡易的な実装）
+                similarity = self._calculate_similarity(answer, other_answer)
+                
+                if similarity >= self.deduplication_threshold:
+                    similar_answers.append(other_answer)
+                    similar_indices.add(j)
+            
+            # 類似回答をマージして最高スコアの回答を採用
+            merged_answer = self._merge_similar_answers(similar_answers)
+            merged_answer.is_deduplicated = len(similar_answers) > 1
+            
+            deduplicated.append(merged_answer)
+            processed_indices.update(similar_indices)
+        
+        self.logger.info(f"🎯 重複除去: {len(answers)}件 → {len(deduplicated)}件")
+        
+        return deduplicated
+    
+    def _calculate_similarity(self, answer1: AggregatedAnswer, answer2: AggregatedAnswer) -> float:
+        """
+        2つの回答の類似度を計算
+        
+        Args:
+            answer1, answer2: 比較対象の回答
+            
+        Returns:
+            float: 類似度 (0.0-1.0)
+        """
+        # URL重複チェック
+        common_urls = set(answer1.source_urls) & set(answer2.source_urls)
+        if common_urls:
+            return 1.0  # 同じソースURLがあれば100%類似とみなす
+        
+        # コンテンツ類似度（簡易実装）
+        words1 = set(answer1.content.lower().split())
+        words2 = set(answer2.content.lower().split())
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        intersection = len(words1 & words2)
+        union = len(words1 | words2)
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def _merge_similar_answers(self, similar_answers: List[AggregatedAnswer]) -> AggregatedAnswer:
+        """
+        類似回答をマージして最適な回答を生成
+        
+        Args:
+            similar_answers: マージ対象の類似回答リスト
+            
+        Returns:
+            AggregatedAnswer: マージ済み回答
+        """
+        # 最高スコアの回答をベースにする
+        best_answer = max(similar_answers, key=lambda x: x.relevance_score)
+        
+        # 情報源URLを統合
+        all_urls = []
+        for answer in similar_answers:
+            all_urls.extend(answer.source_urls)
+        unique_urls = list(set(all_urls))
+        
+        # マージされた回答を作成
+        merged = AggregatedAnswer(
+            content=best_answer.content,
+            relevance_score=best_answer.relevance_score,
+            source_urls=unique_urls,
+            confidence_level=self._calculate_confidence_level(best_answer.relevance_score),
+            extraction_time=best_answer.extraction_time,
+            is_deduplicated=True
+        )
+        
+        return merged
+    
+    def rank_by_relevance(self, answers: List[AggregatedAnswer]) -> List[AggregatedAnswer]:
+        """
+        関連性スコア順にランキング
+        
+        Args:
+            answers: ランキング対象の回答リスト
+            
+        Returns:
+            List[AggregatedAnswer]: ランキング済み回答リスト
+        """
+        # 関連性スコア順でソート（降順）
+        sorted_answers = sorted(answers, key=lambda x: x.relevance_score, reverse=True)
+        
+        # ランク番号を設定
+        for i, answer in enumerate(sorted_answers, 1):
+            answer.rank = i
+        
+        self.logger.info(f"📊 ランキング完了: 1位スコア {sorted_answers[0].relevance_score}/10" if sorted_answers else "📊 ランキング対象なし")
+        
+        return sorted_answers
+    
+    def _calculate_confidence_level(self, relevance_score: float) -> str:
+        """
+        関連性スコアに基づく信頼性レベルの計算
+        
+        Args:
+            relevance_score: 関連性スコア (0-10)
+            
+        Returns:
+            str: 信頼性レベル
+        """
+        if relevance_score >= 9.0:
+            return "非常に高い"
+        elif relevance_score >= 8.0:
+            return "高い"
+        elif relevance_score >= 7.0:
+            return "中程度"
+        else:
+            return "低い"
+    
+    def get_top_answer(self) -> Optional[AggregatedAnswer]:
+        """
+        最も関連性の高い回答を取得
+        
+        Returns:
+            Optional[AggregatedAnswer]: 最高ランクの回答（存在しない場合はNone）
+        """
+        if not self.aggregated_answers:
+            return None
+        
+        return self.aggregated_answers[0]  # 既にランキング済みなので最初の要素が最高ランク
+    
+    def get_aggregation_stats(self) -> Dict[str, Any]:
+        """
+        集計統計情報を取得
+        
+        Returns:
+            Dict[str, Any]: 統計情報
+        """
+        if not self.aggregated_answers:
+            return {"total_answers": 0, "stats": "集計結果なし"}
+        
+        scores = [answer.relevance_score for answer in self.aggregated_answers]
+        deduplicated_count = sum(1 for answer in self.aggregated_answers if answer.is_deduplicated)
+        
+        return {
+            "total_answers": len(self.aggregated_answers),
+            "average_score": sum(scores) / len(scores),
+            "top_score": max(scores),
+            "deduplicated_count": deduplicated_count,
+            "confidence_distribution": {
+                level: sum(1 for answer in self.aggregated_answers if answer.confidence_level == level)
+                for level in ["非常に高い", "高い", "中程度", "低い"]
+            }
+        }
+
+@dataclass
+class SummaryResult:
+    """要約結果を格納するデータクラス"""
+    original_question: str
+    summary_text: str
+    relevance_score: float
+    source_urls: List[str]
+    confidence_metrics: Dict[str, float]
+    generation_time: datetime
+    token_usage: int
+
+class SummaryGenerator:
+    """最高関連性回答の要約生成システム"""
+    
+    def __init__(self, api_client: AsyncOpenAI, token_handler):
+        """
+        初期化処理
+        
+        Args:
+            api_client: DeepSeek API クライアント
+            token_handler: トークン制限ハンドラー
+        """
+        self.api_client = api_client
+        self.token_handler = token_handler
+        self.logger = logging.getLogger(__name__)
+        
+        # 要約生成用プロンプトテンプレート
+        self.summary_prompt_template = """
+質問: {question}
+
+最高関連性コンテンツ（スコア: {relevance_score}/10）:
+{content}
+
+情報源URL: {source_urls}
+
+以下の指示に従って、この情報の要約を作成してください：
+
+1. **要約内容**: 元の質問に対する直接的で簡潔な回答
+2. **関連性**: 元の質問との関連性を明確に示す
+3. **信頼性**: 情報源の信頼性について言及
+4. **構造**: 読みやすく整理された形で提示
+
+要約は以下の形式で作成してください：
+【要約】
+[元の質問に対する直接的な回答を3-5文で簡潔に記述]
+
+【関連性】
+[この情報が元の質問にどのように関連するかを説明]
+
+【情報源】
+[情報源URLと信頼性についてのコメント]
+"""
+    
+    async def generate_summary(self, question: str, best_answer: AggregatedAnswer) -> SummaryResult:
+        """
+        最高関連性回答の要約生成
+        
+        Args:
+            question: 元の質問
+            best_answer: 最高関連性回答
+            
+        Returns:
+            SummaryResult: 要約結果
+        """
+        start_time = time.time()
+        
+        self.logger.info(f"📝 要約生成開始: スコア {best_answer.relevance_score}/10")
+        
+        try:
+            # プロンプト生成
+            prompt = self.create_summary_prompt(question, best_answer)
+            
+            # トークン制限チェック
+            if self.token_handler:
+                prompt = self.token_handler.truncate_content_if_needed(prompt)
+            
+            # DeepSeek APIで要約生成
+            response = await self.api_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "あなたは情報要約の専門家です。与えられた情報を元の質問に対する簡潔で正確な要約を作成してください。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=800,
+                temperature=0.3  # 一貫性重視
+            )
+            
+            summary_text = response.choices[0].message.content
+            token_usage = response.usage.total_tokens if response.usage else 0
+            
+            # 要約品質検証
+            validation_result = await self.validate_summary(summary_text, question)
+            
+            # 信頼性メトリクス計算
+            confidence_metrics = self._calculate_confidence_metrics(
+                best_answer.relevance_score,
+                len(best_answer.source_urls),
+                validation_result
+            )
+            
+            # 要約結果オブジェクト作成
+            summary_result = SummaryResult(
+                original_question=question,
+                summary_text=summary_text,
+                relevance_score=best_answer.relevance_score,
+                source_urls=best_answer.source_urls,
+                confidence_metrics=confidence_metrics,
+                generation_time=datetime.now(),
+                token_usage=token_usage
+            )
+            
+            processing_time = time.time() - start_time
+            
+            self.logger.info(f"✅ 要約生成完了:")
+            self.logger.info(f"   処理時間: {processing_time:.2f}秒")
+            self.logger.info(f"   トークン使用: {token_usage}")
+            self.logger.info(f"   信頼性: {confidence_metrics.get('overall_confidence', 0):.2f}")
+            
+            return summary_result
+            
+        except Exception as e:
+            processing_time = time.time() - start_time
+            self.logger.error(f"❌ 要約生成エラー: {e}")
+            
+            # エラー時のフォールバック要約
+            return SummaryResult(
+                original_question=question,
+                summary_text=f"要約生成に失敗しました。エラー: {str(e)}\n\n元の回答（スコア: {best_answer.relevance_score}/10）を参照してください。",
+                relevance_score=best_answer.relevance_score,
+                source_urls=best_answer.source_urls,
+                confidence_metrics={"overall_confidence": 0.0, "error": True},
+                generation_time=datetime.now(),
+                token_usage=0
+            )
+    
+    def create_summary_prompt(self, question: str, best_answer: AggregatedAnswer) -> str:
+        """
+        要約生成用プロンプト作成
+        
+        Args:
+            question: 元の質問
+            best_answer: 最高関連性回答
+            
+        Returns:
+            str: 生成されたプロンプト
+        """
+        # 情報源URLを整形
+        source_urls_text = "\n".join([f"- {url}" for url in best_answer.source_urls[:3]])  # 最大3つまで
+        
+        return self.summary_prompt_template.format(
+            question=question,
+            relevance_score=best_answer.relevance_score,
+            content=best_answer.content[:1500],  # コンテンツを制限
+            source_urls=source_urls_text
+        )
+    
+    async def validate_summary(self, summary: str, original_question: str) -> bool:
+        """
+        要約品質検証
+        
+        Args:
+            summary: 生成された要約
+            original_question: 元の質問
+            
+        Returns:
+            bool: 要約が適切かどうか
+        """
+        try:
+            # 基本的な品質チェック
+            if len(summary.strip()) < 50:
+                return False
+            
+            # 必要なセクションが含まれているかチェック
+            required_sections = ["【要約】", "【関連性】", "【情報源】"]
+            missing_sections = [section for section in required_sections if section not in summary]
+            
+            if len(missing_sections) > 1:  # 1つまでの欠落は許容
+                self.logger.warning(f"⚠️ 要約に不足セクション: {missing_sections}")
+                return False
+            
+            # 元の質問に関連するキーワードが含まれているかチェック
+            question_keywords = set(original_question.lower().split())
+            summary_keywords = set(summary.lower().split())
+            
+            overlap = len(question_keywords & summary_keywords)
+            relevance_ratio = overlap / len(question_keywords) if question_keywords else 0
+            
+            return relevance_ratio >= 0.3  # 30%以上のキーワード重複で関連性ありとみなす
+            
+        except Exception as e:
+            self.logger.error(f"❌ 要約検証エラー: {e}")
+            return False
+    
+    def _calculate_confidence_metrics(self, relevance_score: float, source_count: int, validation_result: bool) -> Dict[str, float]:
+        """
+        信頼性メトリクス計算
+        
+        Args:
+            relevance_score: 関連性スコア
+            source_count: 情報源数
+            validation_result: 要約検証結果
+            
+        Returns:
+            Dict[str, float]: 信頼性メトリクス
+        """
+        # 関連性信頼度 (0-1)
+        relevance_confidence = min(1.0, relevance_score / 10.0)
+        
+        # 情報源信頼度 (0-1)
+        source_confidence = min(1.0, source_count / 3.0)  # 3つ以上の情報源で最高評価
+        
+        # 検証信頼度 (0-1)
+        validation_confidence = 1.0 if validation_result else 0.5
+        
+        # 総合信頼度
+        overall_confidence = (
+            relevance_confidence * 0.5 +
+            source_confidence * 0.3 +
+            validation_confidence * 0.2
+        )
+        
+        return {
+            "relevance_confidence": relevance_confidence,
+            "source_confidence": source_confidence,
+            "validation_confidence": validation_confidence,
+            "overall_confidence": overall_confidence,
+            "quality_grade": self._get_quality_grade(overall_confidence)
+        }
+    
+    def _get_quality_grade(self, confidence: float) -> str:
+        """
+        信頼度に基づく品質グレード
+        
+        Args:
+            confidence: 総合信頼度
+            
+        Returns:
+            str: 品質グレード
+        """
+        if confidence >= 0.8:
+            return "A (優秀)"
+        elif confidence >= 0.6:
+            return "B (良好)"
+        elif confidence >= 0.4:
+            return "C (普通)"
+        else:
+            return "D (要改善)"
+
+@dataclass
+class FormattedResult:
+    """表示用にフォーマットされた結果"""
+    summary_text: str
+    metadata_table: str
+    confidence_display: str
+    source_list: str
+    error_message: Optional[str] = None
+    fallback_data: Optional[str] = None
+
+class ResultFormatter:
+    """要約結果の構造化表示を担当するクラス"""
+    
+    def __init__(self):
+        """ResultFormatterの初期化"""
+        self.display_templates = {
+            'summary': self._format_summary_template,
+            'table': self._format_table_template,
+            'fallback': self._format_fallback_template,
+            'error': self._format_error_template
+        }
+        logger.info("✅ ResultFormatterが初期化されました")
+    
+    def format_final_result(self, 
+                          summary_result: Optional[SummaryResult], 
+                          aggregated_answers: List[AggregatedAnswer],
+                          original_question: str) -> FormattedResult:
+        """
+        最終結果の構造化表示を生成
+        
+        Args:
+            summary_result: 生成された要約結果
+            aggregated_answers: 集計された回答リスト
+            original_question: 元の質問
+            
+        Returns:
+            FormattedResult: フォーマットされた表示結果
+        """
+        try:
+            if summary_result is None:
+                # 要約生成に失敗した場合のフォールバック表示
+                return self._create_fallback_result(aggregated_answers, original_question)
+            
+            # 正常な要約結果の表示
+            summary_text = self._format_summary_section(summary_result)
+            metadata_table = self._format_metadata_table(summary_result)
+            confidence_display = self._format_confidence_section(summary_result)
+            source_list = self._format_source_section(summary_result)
+            
+            return FormattedResult(
+                summary_text=summary_text,
+                metadata_table=metadata_table,
+                confidence_display=confidence_display,
+                source_list=source_list
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ 結果フォーマット処理でエラー: {e}")
+            return self._create_error_result(str(e), original_question)
+    
+    def _format_summary_template(self, summary_result: SummaryResult) -> str:
+        """要約用テンプレートの適用"""
+        return f"""
+【質問】
+{summary_result.original_question}
+
+【要約回答】
+{summary_result.summary_text}
+
+【関連性スコア】
+{summary_result.relevance_score:.1f}/10.0 ({summary_result.relevance_score * 10:.0f}%)
+"""
+    
+    def _format_table_template(self, summary_result: SummaryResult) -> str:
+        """表形式テンプレートの生成"""
+        confidence_metrics = summary_result.confidence_metrics
+        
+        table = """
+| 項目 | 値 |
+|------|-----|
+"""
+        
+        table += f"| 関連性スコア | {summary_result.relevance_score:.1f}/10.0 |\n"
+        table += f"| 信頼性 | {confidence_metrics.get('reliability', 0.0):.2f} |\n"
+        table += f"| 完全性 | {confidence_metrics.get('completeness', 0.0):.2f} |\n"
+        table += f"| 明確性 | {confidence_metrics.get('clarity', 0.0):.2f} |\n"
+        table += f"| 情報源数 | {len(summary_result.source_urls)} |\n"
+        table += f"| 生成時刻 | {summary_result.generation_time.strftime('%Y-%m-%d %H:%M:%S')} |\n"
+        table += f"| トークン使用量 | {summary_result.token_usage} |\n"
+        
+        return table
+    
+    def _format_fallback_template(self, aggregated_answers: List[AggregatedAnswer]) -> str:
+        """フォールバック表示テンプレート"""
+        if not aggregated_answers:
+            return """
+【エラー】
+要約生成に失敗し、集計された回答も存在しません。
+検索条件を見直してください。
+"""
+        
+        fallback_text = """
+【要約生成失敗】
+以下は集計された生データです：
+
+"""
+        
+        for i, answer in enumerate(aggregated_answers[:3], 1):  # 上位3件まで表示
+            fallback_text += f"""
+--- 回答 {i} ---
+関連性スコア: {answer.relevance_score:.1f}/10.0
+信頼性レベル: {answer.confidence_level}
+内容: {answer.content[:500]}{'...' if len(answer.content) > 500 else ''}
+情報源: {', '.join(answer.source_urls[:2])}
+"""
+        
+        return fallback_text
+    
+    def _format_error_template(self, error_message: str, original_question: str) -> str:
+        """エラー表示テンプレート"""
+        return f"""
+【システムエラー】
+質問: {original_question}
+エラー内容: {error_message}
+
+トラブルシューティング:
+1. ネットワーク接続を確認してください
+2. API制限に達していないか確認してください
+3. 質問を簡単にして再試行してください
+"""
+    
+    def _format_summary_section(self, summary_result: SummaryResult) -> str:
+        """要約セクションのフォーマット"""
+        return self._format_summary_template(summary_result)
+    
+    def _format_metadata_table(self, summary_result: SummaryResult) -> str:
+        """メタデータテーブルのフォーマット"""
+        return self._format_table_template(summary_result)
+    
+    def _format_confidence_section(self, summary_result: SummaryResult) -> str:
+        """信頼性情報セクションのフォーマット"""
+        metrics = summary_result.confidence_metrics
+        confidence_text = f"""
+【信頼性評価】
+• 全体評価: {self._calculate_overall_confidence(metrics):.2f}
+• 信頼性: {metrics.get('reliability', 0.0):.2f}
+• 完全性: {metrics.get('completeness', 0.0):.2f}
+• 明確性: {metrics.get('clarity', 0.0):.2f}
+"""
+        return confidence_text
+    
+    def _format_source_section(self, summary_result: SummaryResult) -> str:
+        """情報源セクションのフォーマット"""
+        sources_text = "【情報源】\n"
+        
+        for i, url in enumerate(summary_result.source_urls, 1):
+            sources_text += f"{i}. {url}\n"
+        
+        return sources_text
+    
+    def _create_fallback_result(self, 
+                              aggregated_answers: List[AggregatedAnswer], 
+                              original_question: str) -> FormattedResult:
+        """フォールバック結果の生成"""
+        fallback_data = self._format_fallback_template(aggregated_answers)
+        
+        return FormattedResult(
+            summary_text="要約生成に失敗しました",
+            metadata_table="| 項目 | 値 |\n|------|-----|\n| ステータス | フォールバック表示 |",
+            confidence_display="【信頼性評価】\n評価不可（要約生成失敗）",
+            source_list="【情報源】\n利用可能な情報源なし",
+            fallback_data=fallback_data
+        )
+    
+    def _create_error_result(self, error_message: str, original_question: str) -> FormattedResult:
+        """エラー結果の生成"""
+        error_text = self._format_error_template(error_message, original_question)
+        
+        return FormattedResult(
+            summary_text="システムエラーが発生しました",
+            metadata_table="| 項目 | 値 |\n|------|-----|\n| ステータス | エラー |",
+            confidence_display="【信頼性評価】\n評価不可（システムエラー）",
+            source_list="【情報源】\n利用不可",
+            error_message=error_text
+        )
+    
+    def _calculate_overall_confidence(self, metrics: Dict[str, float]) -> float:
+        """全体的な信頼性スコアの計算"""
+        if not metrics:
+            return 0.0
+        
+        weights = {
+            'reliability': 0.4,
+            'completeness': 0.3,
+            'clarity': 0.3
+        }
+        
+        total_score = 0.0
+        total_weight = 0.0
+        
+        for key, weight in weights.items():
+            if key in metrics:
+                total_score += metrics[key] * weight
+                total_weight += weight
+        
+        return total_score / total_weight if total_weight > 0 else 0.0
+    
+    def display_formatted_result(self, formatted_result: FormattedResult) -> None:
+        """フォーマットされた結果の表示"""
+        print("\n" + "="*80)
+        print("📋 研究結果サマリー")
+        print("="*80)
+        
+        if formatted_result.error_message:
+            print(formatted_result.error_message)
+            return
+        
+        print(formatted_result.summary_text)
+        
+        print("\n" + "-"*60)
+        print("📊 詳細メタデータ")
+        print("-"*60)
+        print(formatted_result.metadata_table)
+        
+        print("\n" + "-"*60)
+        print(formatted_result.confidence_display)
+        
+        print("\n" + "-"*60)
+        print(formatted_result.source_list)
+        
+        if formatted_result.fallback_data:
+            print("\n" + "-"*60)
+            print("📄 代替情報")
+            print("-"*60)
+            print(formatted_result.fallback_data)
+        
+        print("="*80)
+
 class EnhancedDeepSeekResearchService:
     """Enhanced research service with optimization components, time management, and token optimization"""
     
@@ -1995,6 +3046,12 @@ class EnhancedDeepSeekResearchService:
         self.response_parser = RobustAPIResponseParser()  # Enhanced response parsing
         self.display_formatter = EnhancedDisplayFormatter()  # Enhanced display formatting
         self.success_validator = SuccessValidator()  # Enhanced success determination
+        
+        # New relevance evaluation components
+        self.relevance_evaluator = RelevanceEvaluator(self.client)  # 関連性評価システム
+        self.answer_aggregator = AnswerAggregator()  # 回答集計システム
+        self.summary_generator = SummaryGenerator(self.client, self.token_handler)  # 要約生成システム
+        self.result_formatter = ResultFormatter()  # 結果表示システム
         
         # Research session tracking
         self.current_session = None
@@ -3134,6 +4191,184 @@ Generate 3-4 targeted follow-up search queries to address the gaps and improve r
     async def cleanup(self):
         """Clean up resources"""
         await self.cache_service.close()
+    
+    async def conduct_relevance_enhanced_research(self, original_question: str, relevance_threshold: float = 0.7) -> Dict[str, Any]:
+        """
+        関連性評価強化版リサーチ実行
+        
+        Args:
+            original_question: 元の質問
+            relevance_threshold: 関連性閾値 (0.7 = 70%)
+            
+        Returns:
+            Dict[str, Any]: 関連性評価結果を含む研究結果
+        """
+        logger.info(f"🚀 関連性評価強化版リサーチ開始: {original_question}")
+        logger.info(f"🎯 関連性閾値: {relevance_threshold * 100}%")
+        
+        start_time = time.time()
+        
+        # 基本的な研究を実行
+        base_results = await self.conduct_enhanced_research(original_question, target_relevance=7, max_iterations=1)
+        
+        if not base_results.get('success'):
+            logger.error("❌ 基本研究が失敗しました")
+            return base_results
+        
+        # 抽出されたコンテンツに対して関連性評価を実行
+        extracted_contents = []
+        for iteration in base_results.get('iterations', []):
+            for step_key, step_data in iteration.get('steps', {}).items():
+                if 'extracted_contents' in step_data:
+                    extracted_contents.extend(step_data['extracted_contents'])
+        
+        if not extracted_contents:
+            logger.warning("⚠️ 抽出されたコンテンツがありません")
+            return base_results
+        
+        # 関連性評価を実行
+        evaluations = await self.relevance_evaluator.batch_evaluate(original_question, extracted_contents)
+        
+        # 高関連性コンテンツをフィルタリング
+        high_relevance_evaluations = self.relevance_evaluator.filter_high_relevance(evaluations)
+        
+        if not high_relevance_evaluations:
+            logger.warning("❌ 70%以上の関連性を持つコンテンツが見つかりませんでした")
+            logger.info("🔄 追加の検索クエリを生成して再検索を実行します")
+            
+            # 追加検索クエリ生成（フォールバック）
+            additional_queries = await self._generate_additional_queries(original_question, evaluations)
+            if additional_queries:
+                logger.info(f"🔍 追加クエリ: {additional_queries}")
+                # 追加検索の実装は次のタスクで実装
+            
+            return {
+                **base_results,
+                'relevance_enhancement': {
+                    'evaluations': [eval.__dict__ for eval in evaluations],
+                    'high_relevance_count': 0,
+                    'threshold_met': False,
+                    'additional_queries_generated': additional_queries
+                }
+            }
+        
+        # 高関連性回答を集計・ランキング
+        aggregated_answers = self.answer_aggregator.aggregate_answers(evaluations)
+        
+        # 最も関連性の高い回答を取得
+        top_answer = self.answer_aggregator.get_top_answer()
+        
+        # 最高関連性回答の要約を生成
+        summary_result = None
+        if top_answer:
+            try:
+                summary_result = await self.summary_generator.generate_summary(original_question, top_answer)
+                logger.info(f"📝 要約生成成功: 品質グレード {summary_result.confidence_metrics.get('quality_grade', 'N/A')}")
+            except Exception as e:
+                logger.error(f"❌ 要約生成エラー: {e}")
+        
+        # 関連性評価結果を統合
+        processing_time = time.time() - start_time
+        
+        enhanced_results = {
+            **base_results,
+            'relevance_enhancement': {
+                'total_evaluations': len(evaluations),
+                'high_relevance_count': len(high_relevance_evaluations),
+                'threshold_met': True,
+                'relevance_threshold': relevance_threshold,
+                'evaluations': [eval.__dict__ for eval in evaluations],
+                'high_relevance_evaluations': [eval.__dict__ for eval in high_relevance_evaluations],
+                'evaluation_stats': self.relevance_evaluator.get_evaluation_stats(),
+                'processing_time': processing_time
+            },
+            'answer_aggregation': {
+                'aggregated_answers': [answer.__dict__ for answer in aggregated_answers],
+                'top_answer': top_answer.__dict__ if top_answer else None,
+                'aggregation_stats': self.answer_aggregator.get_aggregation_stats(),
+                'total_aggregated': len(aggregated_answers)
+            },
+            'summary_generation': {
+                'summary_result': summary_result.__dict__ if summary_result else None,
+                'summary_generated': summary_result is not None,
+                'summary_text': summary_result.summary_text if summary_result else None,
+                'confidence_metrics': summary_result.confidence_metrics if summary_result else None
+            }
+        }
+        
+        logger.info(f"✅ 関連性評価強化版リサーチ完了:")
+        logger.info(f"   処理時間: {processing_time:.2f}秒")
+        logger.info(f"   評価件数: {len(evaluations)}件")
+        logger.info(f"   高関連性: {len(high_relevance_evaluations)}件")
+        logger.info(f"   集計回答: {len(aggregated_answers)}件")
+        logger.info(f"   最高ランク: {top_answer.relevance_score:.1f}/10" if top_answer else "   最高ランク: なし")
+        
+        # 結果の構造化表示を生成・表示
+        formatted_result = self.result_formatter.format_final_result(
+            summary_result=summary_result,
+            aggregated_answers=aggregated_answers, 
+            original_question=original_question
+        )
+        
+        self.result_formatter.display_formatted_result(formatted_result)
+        
+        # 結果にフォーマット済み表示も追加
+        enhanced_results['formatted_display'] = {
+            'summary_text': formatted_result.summary_text,
+            'metadata_table': formatted_result.metadata_table,
+            'confidence_display': formatted_result.confidence_display,
+            'source_list': formatted_result.source_list,
+            'error_message': formatted_result.error_message,
+            'fallback_data': formatted_result.fallback_data
+        }
+        
+        return enhanced_results
+    
+    async def _generate_additional_queries(self, original_question: str, evaluations: List) -> List[str]:
+        """
+        関連性が不足している場合の追加検索クエリ生成
+        
+        Args:
+            original_question: 元の質問
+            evaluations: 関連性評価結果
+            
+        Returns:
+            List[str]: 追加検索クエリ
+        """
+        try:
+            # 低関連性評価の理由を分析して改善クエリを生成
+            low_relevance_reasons = [
+                eval.evaluation_reason for eval in evaluations 
+                if not eval.meets_threshold
+            ]
+            
+            prompt = f"""
+元の質問: {original_question}
+
+低関連性と判定された理由:
+{chr(10).join(low_relevance_reasons[:3])}
+
+上記の問題を解決するため、より具体的で関連性の高い情報を得られる検索クエリを3つ生成してください。
+形式: Query1="...", Query2="...", Query3="..."
+"""
+            
+            response = await self.client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "あなたは検索クエリ最適化の専門家です。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=300
+            )
+            
+            queries_text = response.choices[0].message.content
+            queries = re.findall(r'Query\d+="([^"]+)"', queries_text)
+            
+            return queries[:3] if queries else [f"{original_question} 詳細情報"]
+            
+        except Exception as e:
+            logger.error(f"❌ 追加クエリ生成エラー: {e}")
+            return [f"{original_question} 詳細情報"]
 
 def print_separator(char="=", length=80):
     """Print a separator line"""

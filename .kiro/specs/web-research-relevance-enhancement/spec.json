@@ -1,0 +1,28 @@
+{
+  "feature_name": "web-research-relevance-enhancement",
+  "project_description": "test_deepseek_advanced_web_research3_07.py  を改造したいです。 質問に対して、Web検索をしてFactを集め、質問に対して7/10(70%) 以上が関連性がある回答が出たら、回答を集計して、一番関連性の高い答えを、Summaryしてください。最後に、Summaryを表示してください。",
+  "created_at": "2025-07-25T02:35:00.000Z",
+  "updated_at": "2025-07-25T02:50:00.000Z",
+  "language": "japanese",
+  "phase": "ready-for-implementation",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "progress": {
+    "requirements": 100,
+    "design": 100,
+    "tasks": 100
+  },
+  "ready_for_implementation": true
+}

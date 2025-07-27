@@ -23,8 +23,10 @@ A bidirectional information bridge application providing official China data to 
 - Custom steering docs for specialized contexts
 
 ### Active Specifications
+- **web-research-relevance-enhancement**: Web検索による事実収集と関連性評価(70%以上)に基づく回答集計・要約機能
+- **comprehensive-analysis-fix**: Fix comprehensive analysis generation and result summarization in research system v3.07
 - Current spec: Check `.kiro/specs/` for active specifications
-- Use `/spec-status [feature-name]` to check progress
+- Use `/kiro:spec-status [feature-name]` to check progress
 
 ## Project Structure
 
@@ -199,7 +201,7 @@ uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:appl
 - **Configuration**: Environment variables in `.env` file
 
 ## Development Guidelines
-- Think in English, and generate responses in English
+- Think in English, generate responses in Japanese
 
 ## Spec-Driven Development Workflow
 
@@ -207,24 +209,24 @@ uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:appl
 
 #### Kiro Steering (`.kiro/steering/`)
 ```
-/steering-init          # Generate initial steering documents
-/steering-update        # Update steering after changes
-/steering-custom        # Create custom steering for specialized contexts
+/kiro:steering-init          # Generate initial steering documents
+/kiro:steering-update        # Update steering after changes
+/kiro:steering-custom        # Create custom steering for specialized contexts
 ```
 
 **Note**: For new features or empty projects, steering is recommended but not required. You can proceed directly to spec-requirements if needed.
 
 ### Phase 1: Specification Creation
 ```
-/spec-init [feature-name]           # Initialize spec structure only
-/spec-requirements [feature-name]   # Generate requirements → Review → Edit if needed
-/spec-design [feature-name]         # Generate technical design → Review → Edit if needed
-/spec-tasks [feature-name]          # Generate implementation tasks → Review → Edit if needed
+/kiro:spec-init [feature-name]           # Initialize spec structure only
+/kiro:spec-requirements [feature-name]   # Generate requirements → Review → Edit if needed
+/kiro:spec-design [feature-name]         # Generate technical design → Review → Edit if needed
+/kiro:spec-tasks [feature-name]          # Generate implementation tasks → Review → Edit if needed
 ```
 
 ### Phase 2: Progress Tracking
 ```
-/spec-status [feature-name]         # Check current progress and phases
+/kiro:spec-status [feature-name]         # Check current progress and phases
 ```
 
 ## Spec-Driven Development Workflow
@@ -232,17 +234,17 @@ uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:appl
 Kiro's spec-driven development follows a strict **3-phase approval workflow**:
 
 ### Phase 1: Requirements Generation & Approval
-1. **Generate**: `/spec-requirements [feature-name]` - Generate requirements document
+1. **Generate**: `/kiro:spec-requirements [feature-name]` - Generate requirements document
 2. **Review**: Human reviews `requirements.md` and edits if needed
 3. **Approve**: Manually update `spec.json` to set `"requirements": true`
 
 ### Phase 2: Design Generation & Approval
-1. **Generate**: `/spec-design [feature-name]` - Generate technical design (requires requirements approval)
+1. **Generate**: `/kiro:spec-design [feature-name]` - Generate technical design (requires requirements approval)
 2. **Review**: Human reviews `design.md` and edits if needed
 3. **Approve**: Manually update `spec.json` to set `"design": true`
 
 ### Phase 3: Tasks Generation & Approval
-1. **Generate**: `/spec-tasks [feature-name]` - Generate implementation tasks (requires design approval)
+1. **Generate**: `/kiro:spec-tasks [feature-name]` - Generate implementation tasks (requires design approval)
 2. **Review**: Human reviews `tasks.md` and edits if needed
 3. **Approve**: Manually update `spec.json` to set `"tasks": true`
 
@@ -253,13 +255,13 @@ Only after all three phases are approved can implementation begin.
 
 ## Development Rules
 
-1. **Consider steering**: Run `/steering-init` before major development (optional for new features)
+1. **Consider steering**: Run `/kiro:steering-init` before major development (optional for new features)
 2. **Follow the 3-phase approval workflow**: Requirements → Design → Tasks → Implementation
 3. **Manual approval required**: Each phase must be explicitly approved by human review
 4. **No skipping phases**: Design requires approved requirements; Tasks require approved design
 5. **Update task status**: Mark tasks as completed when working on them
-6. **Keep steering current**: Run `/steering-update` after significant changes
-7. **Check spec compliance**: Use `/spec-status` to verify alignment
+6. **Keep steering current**: Run `/kiro:steering-update` after significant changes
+7. **Check spec compliance**: Use `/kiro:spec-status` to verify alignment
 
 ## Automation
 
@@ -273,14 +275,14 @@ This project uses Claude Code hooks to:
 
 When working on implementation:
 1. **Manual tracking**: Update tasks.md checkboxes manually as you complete tasks
-2. **Progress monitoring**: Use `/spec-status` to view current completion status
+2. **Progress monitoring**: Use `/kiro:spec-status` to view current completion status
 3. **TodoWrite integration**: Use TodoWrite tool to track active work items
 4. **Status visibility**: Checkbox parsing shows completion percentage
 
 ## Getting Started
 
-1. Initialize steering documents: `/steering-init`
-2. Create your first spec: `/spec-init [your-feature-name]`
+1. Initialize steering documents: `/kiro:steering-init`
+2. Create your first spec: `/kiro:spec-init [your-feature-name]`
 3. Follow the workflow through requirements, design, and tasks
 
 ## Kiro Steering Details
