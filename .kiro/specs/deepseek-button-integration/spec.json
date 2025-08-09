@@ -1,0 +1,28 @@
+{
+  "feature_name": "deepseek-button-integration",
+  "project_description": "Please implement the algorithm of the test_deepseek_advanced_web_research3_07.py code as the algorithm executed when the 'DeepSeek' button on the screen is pressed.",
+  "created_at": "2025-07-31T13:15:00Z",
+  "updated_at": "2025-08-08T15:30:00Z",
+  "language": "english",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "progress": {
+    "requirements": 100,
+    "design": 100,
+    "tasks": 100
+  },
+  "ready_for_implementation": true
+}
