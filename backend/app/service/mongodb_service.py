@@ -571,3 +571,368 @@ class MongoDBService:
         except Exception as e:
             logger.error(f"Error checking reset rate limit: {e}")
             raise
+    
+    # Enhanced Cache Service Methods for DeepSeek Research
+    
+    @property
+    def web_content_cache(self):
+        """Get web content cache collection"""
+        self._ensure_client()
+        return self._db.web_content_cache
+    
+    @property
+    def research_sessions(self):
+        """Get research sessions collection"""
+        self._ensure_client()
+        return self._db.research_sessions
+    
+    @property
+    def api_usage_logs(self):
+        """Get API usage logs collection"""
+        self._ensure_client()
+        return self._db.api_usage_logs
+    
+    async def create_research_indexes(self, cache_expiry_days=30):
+        """
+        Create indexes for research-related collections
+        
+        Args:
+            cache_expiry_days: TTL for cache entries in days
+        """
+        try:
+            # Web content cache indexes
+            await self.web_content_cache.create_index("url", unique=True)
+            await self.web_content_cache.create_index("keywords")
+            await self.web_content_cache.create_index(
+                "created_at", 
+                expireAfterSeconds=cache_expiry_days * 24 * 3600  # TTL in seconds
+            )
+            await self.web_content_cache.create_index("access_count")
+            
+            # Research sessions indexes
+            await self.research_sessions.create_index("session_id", unique=True)
+            await self.research_sessions.create_index("chat_id")
+            await self.research_sessions.create_index("created_at")
+            await self.research_sessions.create_index("user_id")
+            
+            # API usage logs indexes
+            await self.api_usage_logs.create_index("timestamp")
+            await self.api_usage_logs.create_index("api_type")
+            await self.api_usage_logs.create_index("chat_id")
+            await self.api_usage_logs.create_index("success")
+            
+            logger.info(f"Research indexes created successfully with {cache_expiry_days} day TTL")
+            
+        except Exception as e:
+            logger.error(f"Error creating research indexes: {e}")
+            raise
+    
+    # Web Content Cache Methods
+    
+    async def get_cached_content(self, url: str):
+        """
+        Get cached content for URL
+        
+        Args:
+            url: The URL to lookup
+            
+        Returns:
+            Cached content data if found and fresh, None otherwise
+        """
+        try:
+            cached = await self.web_content_cache.find_one({'url': url})
+            if cached:
+                # Increment access count
+                await self.web_content_cache.update_one(
+                    {'url': url},
+                    {'$inc': {'access_count': 1, 'last_accessed': datetime.utcnow()}}
+                )
+                return cached.get('content')
+            return None
+        except Exception as e:
+            logger.error(f"Error getting cached content for {url}: {e}")
+            return None
+    
+    async def cache_content(self, url: str, content: dict, keywords: list):
+        """
+        Cache content with keywords and metadata
+        
+        Args:
+            url: The URL being cached
+            content: Content data to cache
+            keywords: Keywords associated with the content
+        """
+        try:
+            cache_data = {
+                'url': url,
+                'content': content,
+                'keywords': keywords,
+                'created_at': datetime.utcnow(),
+                'last_accessed': datetime.utcnow(),
+                'access_count': 1
+            }
+            
+            await self.web_content_cache.update_one(
+                {'url': url},
+                {'$set': cache_data},
+                upsert=True
+            )
+            
+            logger.info(f"Content cached successfully for URL: {url}")
+            
+        except Exception as e:
+            logger.error(f"Error caching content for {url}: {e}")
+    
+    async def search_cached_content(self, keywords: list, limit: int = 50):
+        """
+        Search cached content by keywords
+        
+        Args:
+            keywords: List of keywords to search for
+            limit: Maximum number of results to return
+            
+        Returns:
+            List of matching cached content
+        """
+        try:
+            # Create search query using $in operator for keywords
+            query = {'keywords': {'$in': keywords}}
+            
+            cursor = self.web_content_cache.find(query).sort('access_count', -1).limit(limit)
+            results = []
+            async for doc in cursor:
+                results.append(doc)
+            
+            logger.info(f"Found {len(results)} cached content items for keywords: {keywords}")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error searching cached content: {e}")
+            return []
+    
+    async def get_cache_stats(self):
+        """
+        Get cache statistics and health metrics
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        try:
+            total_entries = await self.web_content_cache.count_documents({})
+            
+            # Count successful vs failed entries
+            successful_entries = await self.web_content_cache.count_documents({'content.success': True})
+            failed_entries = total_entries - successful_entries
+            
+            # Get most accessed URLs
+            most_accessed = []
+            cursor = self.web_content_cache.find({}, {'url': 1, 'access_count': 1}).sort('access_count', -1).limit(5)
+            async for doc in cursor:
+                most_accessed.append({
+                    'url': doc['url'],
+                    'access_count': doc.get('access_count', 0)
+                })
+            
+            # Calculate average access count
+            pipeline = [
+                {'$group': {'_id': None, 'avg_access': {'$avg': '$access_count'}}}
+            ]
+            avg_result = []
+            async for doc in self.web_content_cache.aggregate(pipeline):
+                avg_result.append(doc)
+            
+            avg_access = avg_result[0]['avg_access'] if avg_result else 0
+            
+            return {
+                'total_entries': total_entries,
+                'successful_entries': successful_entries,
+                'failed_entries': failed_entries,
+                'success_rate': (successful_entries / total_entries * 100) if total_entries > 0 else 0,
+                'average_access_count': round(avg_access, 2),
+                'most_accessed': most_accessed
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting cache stats: {e}")
+            return {
+                'total_entries': 0,
+                'successful_entries': 0,
+                'failed_entries': 0,
+                'success_rate': 0,
+                'average_access_count': 0,
+                'most_accessed': []
+            }
+    
+    # Research Session Methods
+    
+    async def create_research_session(self, session_data):
+        """
+        Create a new research session
+        
+        Args:
+            session_data: Session data including session_id, chat_id, user_id, question, etc.
+            
+        Returns:
+            Inserted session ID
+        """
+        try:
+            session_data['created_at'] = datetime.utcnow()
+            session_data['updated_at'] = datetime.utcnow()
+            session_data['status'] = 'started'
+            
+            result = await self.research_sessions.insert_one(session_data)
+            logger.info(f"Research session created: {result.inserted_id}")
+            return result.inserted_id
+            
+        except Exception as e:
+            logger.error(f"Error creating research session: {e}")
+            raise
+    
+    async def update_research_session(self, session_id: str, update_data: dict):
+        """
+        Update research session with progress or results
+        
+        Args:
+            session_id: Unique session identifier
+            update_data: Data to update
+            
+        Returns:
+            Number of documents modified
+        """
+        try:
+            update_data['updated_at'] = datetime.utcnow()
+            
+            result = await self.research_sessions.update_one(
+                {'session_id': session_id},
+                {'$set': update_data}
+            )
+            
+            logger.info(f"Research session updated: {session_id}")
+            return result.modified_count
+            
+        except Exception as e:
+            logger.error(f"Error updating research session {session_id}: {e}")
+            raise
+    
+    async def get_research_session(self, session_id: str):
+        """
+        Get research session by ID
+        
+        Args:
+            session_id: Unique session identifier
+            
+        Returns:
+            Session document or None
+        """
+        try:
+            session = await self.research_sessions.find_one({'session_id': session_id})
+            return session
+        except Exception as e:
+            logger.error(f"Error getting research session {session_id}: {e}")
+            return None
+    
+    async def get_user_research_sessions(self, user_id: str, limit: int = 20):
+        """
+        Get research sessions for a user
+        
+        Args:
+            user_id: User identifier
+            limit: Maximum number of sessions to return
+            
+        Returns:
+            List of research sessions
+        """
+        try:
+            cursor = self.research_sessions.find({'user_id': user_id}) \
+                .sort('created_at', -1) \
+                .limit(limit)
+            
+            sessions = []
+            async for session in cursor:
+                sessions.append(session)
+            
+            return sessions
+            
+        except Exception as e:
+            logger.error(f"Error getting user research sessions: {e}")
+            return []
+    
+    # API Usage Logging Methods
+    
+    async def log_api_usage(self, log_data):
+        """
+        Log API usage for monitoring and analytics
+        
+        Args:
+            log_data: Usage data including api_type, endpoint, response_time, success, etc.
+        """
+        try:
+            log_data['timestamp'] = datetime.utcnow()
+            await self.api_usage_logs.insert_one(log_data)
+        except Exception as e:
+            logger.error(f"Error logging API usage: {e}")
+    
+    async def get_api_usage_stats(self, hours_back: int = 24):
+        """
+        Get API usage statistics for the specified time period
+        
+        Args:
+            hours_back: Number of hours to look back
+            
+        Returns:
+            Dictionary with usage statistics
+        """
+        try:
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours_back)
+            
+            # Total API calls
+            total_calls = await self.api_usage_logs.count_documents({
+                'timestamp': {'$gte': cutoff_time}
+            })
+            
+            # Success rate
+            successful_calls = await self.api_usage_logs.count_documents({
+                'timestamp': {'$gte': cutoff_time},
+                'success': True
+            })
+            
+            # API breakdown
+            pipeline = [
+                {'$match': {'timestamp': {'$gte': cutoff_time}}},
+                {'$group': {
+                    '_id': '$api_type',
+                    'count': {'$sum': 1},
+                    'avg_response_time': {'$avg': '$response_time'},
+                    'success_rate': {
+                        '$avg': {'$cond': [{'$eq': ['$success', True]}, 1, 0]}
+                    }
+                }},
+                {'$sort': {'count': -1}}
+            ]
+            
+            api_breakdown = []
+            async for doc in self.api_usage_logs.aggregate(pipeline):
+                api_breakdown.append({
+                    'api_type': doc['_id'],
+                    'call_count': doc['count'],
+                    'avg_response_time': round(doc['avg_response_time'], 2),
+                    'success_rate': round(doc['success_rate'] * 100, 1)
+                })
+            
+            return {
+                'time_period_hours': hours_back,
+                'total_api_calls': total_calls,
+                'successful_calls': successful_calls,
+                'success_rate': round((successful_calls / total_calls * 100), 1) if total_calls > 0 else 0,
+                'api_breakdown': api_breakdown
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting API usage stats: {e}")
+            return {
+                'time_period_hours': hours_back,
+                'total_api_calls': 0,
+                'successful_calls': 0,
+                'success_rate': 0,
+                'api_breakdown': []
+            }

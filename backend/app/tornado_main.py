@@ -37,6 +37,59 @@ logger.info("Logging configured to write to backend.log")
 load_dotenv()
 logger.info("Environment variables loaded from .env file")
 
+def validate_deepseek_research_config():
+    """Validate environment configuration for DeepSeek research functionality"""
+    config_status = {
+        'deepseek_api': False,
+        'google_search': False, 
+        'brightdata': False,
+        'cache_config': True  # Always available
+    }
+    
+    warnings = []
+    
+    # Check DeepSeek API
+    if os.environ.get('DEEPSEEK_API_KEY'):
+        config_status['deepseek_api'] = True
+        logger.info("✅ DeepSeek API configured")
+    else:
+        warnings.append("⚠️ DEEPSEEK_API_KEY not configured - research functionality limited")
+    
+    # Check Google Search API
+    if os.environ.get('GOOGLE_API_KEY') and os.environ.get('GOOGLE_CSE_ID'):
+        config_status['google_search'] = True
+        logger.info("✅ Google Search API configured")
+    else:
+        warnings.append("⚠️ Google Search API not configured (GOOGLE_API_KEY/GOOGLE_CSE_ID) - web search disabled")
+    
+    # Check Bright Data API
+    if os.environ.get('BRIGHTDATA_API_KEY'):
+        config_status['brightdata'] = True
+        logger.info("✅ Bright Data API configured")
+    else:
+        warnings.append("⚠️ BRIGHTDATA_API_KEY not configured - content extraction will be limited")
+    
+    # Log cache configuration
+    cache_expiry = os.environ.get('CACHE_EXPIRY_DAYS', '30')
+    research_timeout = os.environ.get('DEEPSEEK_RESEARCH_TIMEOUT', '600')
+    logger.info(f"📊 Research configuration: Cache TTL={cache_expiry} days, Timeout={research_timeout}s")
+    
+    # Log warnings
+    for warning in warnings:
+        logger.warning(warning)
+    
+    # Determine if research is fully functional
+    fully_functional = config_status['deepseek_api'] and config_status['google_search']
+    if fully_functional:
+        logger.info("🔬 DeepSeek Research: Fully functional")
+    else:
+        logger.warning("🔬 DeepSeek Research: Limited functionality due to missing API keys")
+    
+    return config_status
+
+# Validate DeepSeek research configuration
+deepseek_research_config = validate_deepseek_research_config()
+
 # Global variables
 input_queue = None
 output_queue = None

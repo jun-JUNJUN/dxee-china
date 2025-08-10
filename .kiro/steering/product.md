@@ -1,75 +1,70 @@
 # Product Overview
 
 ## Product Name
-Claude Code Spec-Driven Development System
+dxee-china (DeepSchina)
 
 ## Product Description
-A Kiro-style specification-driven development system for Claude Code that provides structured workflows, automated progress tracking, and phase-based approval processes for software development projects.
+A bidirectional information bridge application providing official China data to Asia-Europe users and verified global information to mainland China users. Features real-time streaming AI chat, advanced web research capabilities, search functionality, and multi-provider authentication.
 
 ## Core Features
-1. **Spec-Driven Development Workflow**
-   - Three-phase approval process (Requirements → Design → Tasks)
-   - Manual approval gates between phases
-   - Structured document generation
 
-2. **Steering System**
-   - Project context management through markdown files
-   - Core steering documents (product, tech, structure)
-   - Custom steering for specialized contexts
+1. **🔄 Real-time Streaming Chat**
+   - AI responses stream word-by-word like ChatGPT
+   - Server-Sent Events (SSE) implementation with async queues
+   - DeepSeek API integration with streaming support
+   - Graceful fallback to legacy non-streaming mode
 
-3. **Slash Commands**
-   - `/steering-init` - Initialize steering documents
-   - `/steering-update` - Update steering after changes
-   - `/steering-custom` - Create custom steering
-   - `/spec-init` - Initialize spec structure
-   - `/spec-requirements` - Generate requirements
-   - `/spec-design` - Generate technical design
-   - `/spec-tasks` - Generate implementation tasks
-   - `/spec-status` - Check progress and phases
+2. **🔍 Advanced Web Research System**
+   - Enhanced web research with relevance scoring (70%+ threshold)
+   - Multi-source content extraction and aggregation
+   - AI-powered reasoning and comprehensive analysis
+   - Statistical summary generation and result optimization
 
-4. **Task Progress Tracking**
-   - Manual task tracking through tasks.md checkboxes
-   - Progress monitoring with checkbox parsing
-   - TodoWrite integration for active work items
-   - Spec compliance checking
-   - Context preservation during compaction
-   - Minimal automation to prevent hook errors
+3. **🔐 Multi-Provider Authentication**
+   - OAuth integration: Google, Microsoft, Apple
+   - Email/password registration and login
+   - JWT token-based sessions with secure cookie management
+   - User profile management
 
-5. **Comprehensive Documentation**
-   - Technical blog explaining implementation approach
-   - Structured docs/ directory with examples and guides
-   - Kiro IDE reference documentation (llms.txt)
-   - Example specifications and steering documents
-   - Step-by-step workflow diagrams
+4. **💾 Persistent Data Management**
+   - MongoDB for chat history and user data
+   - Meilisearch for fast content search
+   - Dual storage architecture (complete data + searchable subset)
+   - Message sharing and discovery functionality
 
-6. **Language Support**
-   - Bilingual operation: English thinking, Japanese responses
-   - Japanese README with comprehensive workflow documentation
-   - Localized user interface and command descriptions
+5. **🌐 Bidirectional Information Bridge**
+   - Official China data delivery to Asia-Europe users
+   - Verified global information provision to mainland China users
+   - Cultural and linguistic content adaptation
+   - Cross-regional information validation
 
-## Development Status
-> **Initial Version Warning**: This is an initial version under active development and improvement based on usage feedback.
+6. **⚡ Modern Architecture**
+   - Tornado async web framework
+   - UV package manager for modern Python development
+   - Docker containerization for services
+   - Production-ready with Gunicorn deployment
 
-## Use Cases
-- **New Feature Development**: Start with steering, create specs, implement with confidence
-- **Project Documentation**: Maintain living documentation through steering files
-- **Team Collaboration**: Clear approval workflow ensures alignment
-- **Quality Assurance**: Phase-based approvals prevent premature implementation
-- **Real-world Applications**: Proven with complex specs including Rubik's cube solver app and real-time election results tracking app
+## Target Use Cases
 
-## Value Proposition
-- **Reduced Development Risk**: Structured approach catches issues early
-- **Improved Communication**: Clear specifications and approval process
-- **Better Documentation**: Living steering documents stay current with comprehensive guides
-- **Faster Iteration**: Well-defined tasks and clear progress tracking
-- **Context Preservation**: Manual tracking maintains project knowledge
-- **Easy Integration**: Simple copy-and-paste setup for existing projects
-- **Language Flexibility**: Bilingual support (English thinking, Japanese responses)
-- **Comprehensive Learning**: Technical blog and documentation provide deep understanding
-- **Real-world Validation**: Proven with complex example specifications including Rubik's cube solver and election tracking applications
+- **Cross-Border Business Intelligence**: Companies needing reliable China market data
+- **Academic Research**: Researchers requiring verified information from both regions
+- **News and Media**: Journalists seeking authentic cross-regional perspectives
+- **Cultural Exchange**: Organizations facilitating Asia-Europe cultural understanding
+- **Investment Analysis**: Financial analysts needing comprehensive regional insights
+
+## Key Value Proposition
+
+- **🔗 Bidirectional Information Flow**: Unique positioning as a bridge between East and West
+- **✨ Real-time Experience**: ChatGPT-like streaming responses for immediate engagement
+- **🎯 High Relevance**: Advanced research system with 70%+ relevance threshold
+- **🔒 Trust & Security**: Multi-provider auth with secure data handling
+- **📊 Comprehensive Analysis**: AI-powered reasoning with statistical summaries
+- **🚀 Performance**: Async-first architecture supporting ~2000 users with ~200 chats each
 
 ## Target Users
-- Software development teams using Claude Code
-- Projects requiring structured development workflows
-- Teams needing clear documentation and approval processes
-- Developers seeking better spec-driven development tools
+
+- **Business Professionals**: Executives and analysts working across Asia-Europe markets
+- **Researchers & Academics**: Scholars studying cross-regional topics
+- **Media & Journalists**: Content creators needing verified cross-regional information
+- **Government & NGOs**: Organizations facilitating international cooperation
+- **General Public**: Individuals seeking authentic perspectives from both regions

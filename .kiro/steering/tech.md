@@ -1,118 +1,152 @@
 # Technology Stack
 
 ## Architecture Overview
-A Claude Code extension system that uses hooks and slash commands to implement Kiro-style spec-driven development workflows.
+Modern async-first Python web application with real-time streaming capabilities, built on Tornado framework with MongoDB storage and AI-powered research functionality.
 
 ## Core Technologies
-- **Platform**: Claude Code CLI (darwin)
-- **Language**: Markdown-based specifications and documentation
-- **Automation**: Claude Code hooks system
-- **Version Control**: Git
+
+### Backend Framework
+- **Tornado**: 6.4.2 - Python async web server and framework
+- **Python**: >=3.11 with modern async/await patterns
+- **UV**: Modern Python package manager for dependency management
+- **Gunicorn**: WSGI server for production deployment
+
+### Database & Storage
+- **MongoDB**: Primary data storage (users, chats, messages)
+- **Motor**: 3.3.2 - Async MongoDB driver for Python
+- **PyMongo**: 4.6.1 - MongoDB operations and indexing
+
+### Search Engine
+- **Meilisearch**: Docker-containerized search engine
+- **meilisearch-python-sdk**: 4.6.0 - Python integration
+- **Dual Storage**: Complete data in MongoDB + searchable subset in Meilisearch
+
+### AI & Research
+- **DeepSeek API**: AI chat completions with streaming support
+- **OpenAI Client**: 1.82.0 - API client for DeepSeek integration
+- **Advanced Research System**: Multi-source content extraction and reasoning
+- **Content Processing**: BeautifulSoup4, newspaper3k, readability-lxml
+
+### Authentication
+- **Multi-Provider OAuth**: Google, Microsoft, Apple
+- **JWT Tokens**: PyJWT 2.10.1 for session management
+- **BCrypt**: 4.0.1 for password hashing
+- **Secure Cookies**: Token-based authentication
 
 ## Development Environment
 
 ### System Requirements
-- Claude Code CLI
-- Git repository
-- macOS (darwin platform)
+- **Python**: >=3.11
+- **MongoDB**: Local installation
+- **Docker**: For Meilisearch container
+- **UV Package Manager**: Modern Python dependency management
 
-### Project Dependencies
-- Claude Code slash commands (.claude/commands/)
-- File system access for steering/spec management
-- No external package dependencies (pure markdown/JSON system)
-- TodoWrite tool integration for task management
-
-### Language Specifications
-- **Thinking**: English (internal processing)
-- **Responses**: Japanese (user-facing content)
-- **Documentation**: Bilingual with Japanese emphasis
-
-### Task Tracking Approach
-- **Manual Progress**: Checkbox manipulation in tasks.md files
-- **Automatic Parsing**: Progress percentage calculation from checkboxes
-- **Enhanced Tracking**: Improved hook error resolution and progress monitoring
-- **TodoWrite Integration**: Active task management during implementation
-
-## Key Commands
-
-### Steering Commands
+### Environment Variables
 ```bash
-/steering-init          # Generate initial steering documents
-/steering-update        # Update steering after changes  
-/steering-custom        # Create custom steering for specialized contexts
+# Server Configuration
+PORT=8100
+DEBUG=True
+
+# Database
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB_NAME=dxeechina
+
+# Search Engine
+MEILISEARCH_HOST=http://localhost:7701
+MEILISEARCH_API_KEY=masterKey
+
+# AI Service
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_API_URL=https://api.deepseek.com
+
+# Authentication
+AUTH_SECRET_KEY=your_auth_secret_key_here
+GOOGLE_CLIENT_ID=your_google_client_id
+MICROSOFT_CLIENT_ID=your_microsoft_client_id
+APPLE_CLIENT_ID=your_apple_client_id
 ```
 
-### Specification Commands
+## Key Development Commands
+
+### Environment Setup
 ```bash
-/spec-init [feature-name]           # Initialize spec structure only
-/spec-requirements [feature-name]   # Generate requirements
-/spec-design [feature-name]         # Generate technical design
-/spec-tasks [feature-name]          # Generate implementation tasks
-/spec-status [feature-name]         # Check current progress and phases
+# Setup virtual environments
+./setup_venvs.sh
+
+# Activate backend environment
+./activate_backend.sh
+# or: source activate_backend.sh
 ```
 
-## File Structure
-```
-.kiro/
-├── steering/           # Project steering documents
-│   ├── product.md     # Product overview
-│   ├── tech.md        # Technology stack
-│   └── structure.md   # Code organization
-├── specs/             # Feature specifications
-│   └── [feature]/
-│       ├── spec.json      # Spec metadata and approval status
-│       ├── requirements.md # Feature requirements
-│       ├── design.md      # Technical design
-│       └── tasks.md       # Implementation tasks
+### Development Server
+```bash
+# Start development server
+cd backend && ./run.sh
 
-.claude/
-└── commands/          # Slash command definitions
-    ├── spec-init.md
-    ├── spec-requirements.md
-    ├── spec-design.md
-    ├── spec-tasks.md
-    ├── spec-status.md
-    ├── steering-init.md
-    ├── steering-update.md
-    └── steering-custom.md
-
-docs/                  # Comprehensive documentation
-├── claude-code/       # Claude Code specific guides
-│   ├── hooks-guide.md # Hook system implementation
-│   ├── hooks.md       # Hook reference
-│   └── slash-commands.md # Command reference
-└── kiro/              # Kiro IDE reference and examples
-    ├── llms.txt       # Kiro IDE documentation
-    ├── specs-example/ # Example specifications
-    └── steering-example/ # Example steering documents
-
-README.md             # Japanese user documentation with workflow diagrams
+# Start services
+docker-compose up -d  # Meilisearch
+# MongoDB: brew services start mongodb-community (macOS)
 ```
 
-## Integration Points
-- **Claude Code CLI**: Primary interface for all commands
-- **Git**: Version control for specs and steering
-- **File System**: Markdown file management
-- **Hooks System**: Automated tracking and compliance
-- **TodoWrite Tool**: Task progress tracking and management
+### Testing
+```bash
+# API endpoint testing
+./backend/test_api.sh
 
-## Development Workflow
-1. Initialize project steering with `/steering-init`
-2. Create feature specifications with `/spec-init`
-3. Follow 3-phase approval process (Requirements → Design → Tasks)
-4. Implement with manual task tracking via checkbox manipulation
-5. Monitor progress with `/spec-status`
-6. Update steering as needed with `/steering-update`
+# DeepSeek integration testing
+python ./backend/test_deepseek_api.py
 
-## Task Progress Management
-- **Manual Tracking**: Update tasks.md checkboxes during implementation
-- **Progress Calculation**: Automatic percentage computation from checkbox states  
-- **Enhanced Monitoring**: Improved hook error resolution and progress tracking
-- **Status Monitoring**: Use `/spec-status` for current progress overview
-- **TodoWrite Integration**: Track active work items during development sessions
+# Health check
+curl http://localhost:8100/health
+```
 
-## Security & Access
-- Local file system based
-- No external dependencies
-- Git-based version control
-- Manual approval gates for phase transitions
+### Production Deployment
+```bash
+# Production server
+cd backend
+uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:application
+```
+
+## Port Configuration
+- **Main Application**: 8100 (configurable via PORT env var)
+- **MongoDB**: 27017 (default local installation)
+- **Meilisearch**: 7701 (Docker container)
+
+## Streaming Architecture
+
+### Real-time Chat Implementation
+- **Protocol**: Server-Sent Events (SSE) over HTTP
+- **Endpoint**: `/chat/stream` (primary) + `/chat/message` (fallback)
+- **Queue Management**: Per-chat stream queues with automatic cleanup
+- **Error Handling**: Graceful degradation to non-streaming mode
+
+### Technical Flow
+1. **Frontend**: Fetch API with ReadableStream for SSE processing
+2. **Backend**: ChatStreamHandler manages real-time streaming
+3. **AI Service**: DeepSeek API called with `stream=True` parameter
+4. **Processing**: Async stream queues handle real-time chunks
+5. **Storage**: Complete messages saved to MongoDB after streaming
+
+## Performance Characteristics
+
+- **Capacity**: ~2000 users with ~200 chats each
+- **Architecture**: Async-first for concurrent request handling
+- **Memory**: Efficient streaming with automatic queue cleanup
+- **Latency**: Real-time word-by-word responses like ChatGPT
+- **Scalability**: Horizontal scaling via multiple Gunicorn workers
+
+## Security & Privacy
+
+- **Local Data**: MongoDB and Meilisearch run locally for privacy
+- **Authentication**: Multi-provider OAuth with secure token management
+- **API Security**: Environment-based configuration for sensitive keys
+- **HTTPS**: Production deployment with TLS termination
+- **Data Isolation**: User-specific data access controls
+
+## Development Patterns
+
+- **Async-first**: All I/O operations use async/await
+- **Error Handling**: Comprehensive try/catch with graceful degradation
+- **Logging**: Structured logging for debugging and monitoring
+- **Testing**: Both automated (scripts) and manual testing workflows
+- **Code Organization**: Handler → Service → Database layered architecture

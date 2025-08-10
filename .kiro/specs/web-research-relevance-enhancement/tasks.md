@@ -94,26 +94,26 @@
     - ユーザーガイダンスとトラブルシューティング情報
     - _要求: 4.3_
 
-- [ ] 5. 既存システムとの統合
-  - [ ] 5.1 EnhancedDeepSeekResearchServiceの拡張
+- [x] 5. 既存システムとの統合
+  - [x] 5.1 EnhancedDeepSeekResearchServiceの拡張
     - conduct_relevance_enhanced_research()メソッドの追加
     - 既存のMongoDB キャッシュ機能との統合維持
     - 既存の時間制限（10分）とトークン制限の適用
     - _要求: 5.1, 5.2_
 
-  - [ ] 5.2 既存APIとの互換性確保
+  - [x] 5.2 既存APIとの互換性確保
     - evaluate_and_aggregate_results()メソッドの実装
     - DeepSeek API、Bright Data APIとの統合維持
     - 既存の統計サマリー生成機能との連携
     - _要求: 5.3_
 
-  - [ ] 5.3 エラーハンドリングとフォールバック
+  - [x] 5.3 エラーハンドリングとフォールバック
     - 新機能エラー時の既存機能へのフォールバック実装
     - MongoDB接続エラー、API呼び出し失敗時の処理
     - エラーログとユーザー通知システム
     - _要求: 5.4_
 
-  - [ ] 5.4 メイン実行フローの統合
+  - [x] 5.4 メイン実行フローの統合
     - test_enhanced_research()関数の拡張
     - 関連性評価モードと従来モードの切り替え
     - 実行結果の統合レポート生成

@@ -251,7 +251,7 @@
             background: #333;
             border-color: #00bcd4;
         }
-        .search-btn, .deep-btn, .qwen-btn {
+        .search-btn, .deep-btn, .qwen-btn, .deepseek-btn {
             padding: 6px 14px;
             border-radius: 16px;
             border: 1px solid #fff;
@@ -265,22 +265,22 @@
         .search-btn {
             border-color: #00bcd4;
         }
-        .search-btn:hover, .deep-btn:hover, .qwen-btn:hover {
+        .search-btn:hover, .deep-btn:hover, .qwen-btn:hover, .deepseek-btn:hover {
             background: #333;
             border-color: #00bcd4;
         }
-        .search-btn.selected, .deep-btn.selected, .qwen-btn.selected {
+        .search-btn.selected, .deep-btn.selected, .qwen-btn.selected, .deepseek-btn.selected {
             background: #00bcd4;
             color: #fff;
             border-color: #00bcd4;
         }
-        .search-btn.disabled, .deep-btn.disabled, .qwen-btn.disabled {
+        .search-btn.disabled, .deep-btn.disabled, .qwen-btn.disabled, .deepseek-btn.disabled {
             opacity: 0.5;
             cursor: not-allowed;
             background: #232526;
             border-color: #666;
         }
-        .search-btn.disabled:hover, .deep-btn.disabled:hover, .qwen-btn.disabled:hover {
+        .search-btn.disabled:hover, .deep-btn.disabled:hover, .qwen-btn.disabled:hover, .deepseek-btn.disabled:hover {
             background: #232526;
             border-color: #666;
         }
@@ -884,6 +884,7 @@
                             <button type="button" class="search-btn selectable-btn" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
                             <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
+                            <button type="button" class="deepseek-btn selectable-btn" data-mode="deepseek">DeepSeek</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn">Execute</button>
@@ -906,6 +907,7 @@
                             <button type="button" class="search-btn selectable-btn selected" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
                             <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
+                            <button type="button" class="deepseek-btn selectable-btn" data-mode="deepseek">DeepSeek</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn" id="chat-execute-btn">Execute</button>
@@ -1247,6 +1249,12 @@
                 qwenBtn.dataset.mode = 'googleweb';
                 qwenBtn.textContent = 'Google Deep';
                 
+                const deepseekBtn = document.createElement('button');
+                deepseekBtn.type = 'button';
+                deepseekBtn.className = 'deepseek-btn selectable-btn';
+                deepseekBtn.dataset.mode = 'deepseek';
+                deepseekBtn.textContent = 'DeepSeek';
+                
                 const rightButton = document.createElement('div');
                 rightButton.className = 'right-button';
                 
@@ -1258,6 +1266,7 @@
                 leftButtons.appendChild(searchBtn);
                 leftButtons.appendChild(deepBtn);
                 leftButtons.appendChild(qwenBtn);
+                leftButtons.appendChild(deepseekBtn);
                 
                 rightButton.appendChild(executeBtn);
                 
@@ -1845,6 +1854,397 @@
             }
             
             // Function to handle streaming response
+            // DeepSeek Research Progress Handlers
+            function handleResearchStep(messageDiv, data) {
+                // Create research progress section if it doesn't exist
+                if (!messageDiv.querySelector('.research-progress')) {
+                    const researchSection = document.createElement('div');
+                    researchSection.className = 'research-progress';
+                    researchSection.style.marginTop = '15px';
+                    researchSection.style.padding = '16px';
+                    researchSection.style.backgroundColor = '#1a2e1a';
+                    researchSection.style.border = '1px solid #4caf50';
+                    researchSection.style.borderLeft = '4px solid #4caf50';
+                    researchSection.style.borderRadius = '8px';
+                    researchSection.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.1)';
+                    
+                    const researchHeader = document.createElement('div');
+                    researchHeader.className = 'research-header';
+                    researchHeader.style.fontWeight = 'bold';
+                    researchHeader.style.color = '#4caf50';
+                    researchHeader.style.marginBottom = '12px';
+                    researchHeader.style.fontSize = '16px';
+                    researchHeader.style.display = 'flex';
+                    researchHeader.style.alignItems = 'center';
+                    researchHeader.style.gap = '8px';
+                    
+                    const researchIcon = document.createElement('span');
+                    researchIcon.textContent = '🔬';
+                    researchIcon.style.fontSize = '18px';
+                    
+                    const headerText = document.createElement('span');
+                    headerText.textContent = 'DeepSeek Research Progress';
+                    
+                    const streamingIndicator = document.createElement('span');
+                    streamingIndicator.className = 'streaming-indicator';
+                    streamingIndicator.textContent = '●';
+                    streamingIndicator.style.color = '#4caf50';
+                    streamingIndicator.style.animation = 'pulse 1.5s infinite';
+                    streamingIndicator.style.marginLeft = 'auto';
+                    
+                    researchHeader.appendChild(researchIcon);
+                    researchHeader.appendChild(headerText);
+                    researchHeader.appendChild(streamingIndicator);
+                    
+                    const researchSteps = document.createElement('div');
+                    researchSteps.className = 'research-steps';
+                    researchSteps.style.fontSize = '14px';
+                    researchSteps.style.lineHeight = '1.4';
+                    researchSteps.style.color = '#b8e6b8';
+                    
+                    researchSection.appendChild(researchHeader);
+                    researchSection.appendChild(researchSteps);
+                    
+                    messageDiv.appendChild(researchSection);
+                }
+                
+                // Add the step to the research steps
+                const researchSteps = messageDiv.querySelector('.research-steps');
+                const stepDiv = document.createElement('div');
+                stepDiv.style.marginBottom = '6px';
+                stepDiv.style.display = 'flex';
+                stepDiv.style.alignItems = 'center';
+                stepDiv.style.gap = '8px';
+                
+                const stepIcon = document.createElement('span');
+                stepIcon.style.color = '#4caf50';
+                stepIcon.style.fontSize = '12px';
+                stepIcon.textContent = '▶';
+                
+                const stepText = document.createElement('span');
+                stepText.textContent = data.content;
+                
+                stepDiv.appendChild(stepIcon);
+                stepDiv.appendChild(stepText);
+                researchSteps.appendChild(stepDiv);
+                
+                // Scroll to show the new step
+                const chatMessages = document.querySelector('.chat-messages');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            function handleResearchProgress(messageDiv, data) {
+                // Update the latest step with progress information
+                const researchSteps = messageDiv.querySelector('.research-steps');
+                if (researchSteps) {
+                    const progressDiv = document.createElement('div');
+                    progressDiv.style.marginBottom = '6px';
+                    progressDiv.style.display = 'flex';
+                    progressDiv.style.alignItems = 'center';
+                    progressDiv.style.gap = '8px';
+                    progressDiv.style.marginLeft = '20px';
+                    
+                    const progressIcon = document.createElement('span');
+                    progressIcon.style.color = '#81c784';
+                    progressIcon.style.fontSize = '12px';
+                    progressIcon.textContent = '✓';
+                    
+                    const progressText = document.createElement('span');
+                    progressText.textContent = data.content;
+                    progressText.style.color = '#81c784';
+                    progressText.style.fontSize = '13px';
+                    
+                    progressDiv.appendChild(progressIcon);
+                    progressDiv.appendChild(progressText);
+                    researchSteps.appendChild(progressDiv);
+                    
+                    // Scroll to show the new progress
+                    const chatMessages = document.querySelector('.chat-messages');
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
+            
+            function handleResearchComplete(messageDiv, data) {
+                // Remove the streaming indicator from research section
+                const streamingIndicator = messageDiv.querySelector('.research-progress .streaming-indicator');
+                if (streamingIndicator) {
+                    streamingIndicator.remove();
+                }
+                
+                // Add completion indicator
+                const researchHeader = messageDiv.querySelector('.research-header');
+                if (researchHeader) {
+                    const completionIndicator = document.createElement('span');
+                    completionIndicator.textContent = '✅';
+                    completionIndicator.style.fontSize = '16px';
+                    completionIndicator.style.marginLeft = 'auto';
+                    researchHeader.appendChild(completionIndicator);
+                }
+                
+                // Add final completion message to steps
+                const researchSteps = messageDiv.querySelector('.research-steps');
+                if (researchSteps) {
+                    const completionDiv = document.createElement('div');
+                    completionDiv.style.marginTop = '12px';
+                    completionDiv.style.padding = '8px';
+                    completionDiv.style.backgroundColor = 'rgba(76, 175, 80, 0.1)';
+                    completionDiv.style.borderRadius = '4px';
+                    completionDiv.style.color = '#4caf50';
+                    completionDiv.style.fontWeight = 'bold';
+                    completionDiv.style.textAlign = 'center';
+                    completionDiv.textContent = data.content;
+                    
+                    researchSteps.appendChild(completionDiv);
+                }
+            }
+            
+            function addDeepSeekResearchDisplay(messageDiv, researchData) {
+                // Create enhanced research summary section
+                const researchSummary = document.createElement('div');
+                researchSummary.className = 'research-summary';
+                researchSummary.style.marginTop = '20px';
+                researchSummary.style.padding = '16px';
+                researchSummary.style.backgroundColor = '#1a1a2e';
+                researchSummary.style.border = '1px solid #4a90e2';
+                researchSummary.style.borderRadius = '8px';
+                researchSummary.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.1)';
+                
+                // Header
+                const header = document.createElement('div');
+                header.style.display = 'flex';
+                header.style.alignItems = 'center';
+                header.style.gap = '8px';
+                header.style.marginBottom = '12px';
+                header.style.fontWeight = 'bold';
+                header.style.color = '#4a90e2';
+                
+                const icon = document.createElement('span');
+                icon.textContent = '📊';
+                icon.style.fontSize = '18px';
+                
+                const title = document.createElement('span');
+                title.textContent = 'Research Summary';
+                title.style.fontSize = '16px';
+                
+                header.appendChild(icon);
+                header.appendChild(title);
+                
+                // Research metrics
+                const metricsDiv = document.createElement('div');
+                metricsDiv.className = 'research-metrics';
+                metricsDiv.style.display = 'grid';
+                metricsDiv.style.gridTemplateColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
+                metricsDiv.style.gap = '12px';
+                metricsDiv.style.marginBottom = '16px';
+                
+                // Add metrics
+                const metrics = [
+                    { label: 'Success', value: researchData.success ? '✅ Yes' : '❌ No', color: researchData.success ? '#4caf50' : '#f44336' },
+                    { label: 'Research Type', value: researchData.research_type || 'Unknown', color: '#4a90e2' },
+                    { label: 'Duration', value: calculateDuration(researchData.timing_metrics), color: '#ff9800' }
+                ];
+                
+                // Add search metrics if available
+                const searchMetrics = researchData.search_metrics;
+                if (searchMetrics) {
+                    metrics.push(
+                        { label: 'Queries', value: searchMetrics.total_queries || 0, color: '#9c27b0' },
+                        { label: 'Results Found', value: searchMetrics.total_results || 0, color: '#2196f3' },
+                        { label: 'Successful Extractions', value: searchMetrics.successful_extractions || 0, color: '#4caf50' },
+                        { label: 'Cache Hit Rate', value: `${Math.round((searchMetrics.cache_performance?.hit_rate || 0) * 100)}%`, color: '#ff5722' }
+                    );
+                }
+                
+                metrics.forEach(metric => {
+                    const metricDiv = document.createElement('div');
+                    metricDiv.style.padding = '8px';
+                    metricDiv.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                    metricDiv.style.borderRadius = '4px';
+                    metricDiv.style.textAlign = 'center';
+                    
+                    const labelDiv = document.createElement('div');
+                    labelDiv.style.fontSize = '12px';
+                    labelDiv.style.color = '#888';
+                    labelDiv.style.marginBottom = '4px';
+                    labelDiv.textContent = metric.label;
+                    
+                    const valueDiv = document.createElement('div');
+                    valueDiv.style.fontSize = '14px';
+                    valueDiv.style.fontWeight = 'bold';
+                    valueDiv.style.color = metric.color;
+                    valueDiv.textContent = metric.value;
+                    
+                    metricDiv.appendChild(labelDiv);
+                    metricDiv.appendChild(valueDiv);
+                    metricsDiv.appendChild(metricDiv);
+                });
+                
+                // Sources section
+                if (researchData.sources && researchData.sources.length > 0) {
+                    const sourcesHeader = document.createElement('div');
+                    sourcesHeader.style.fontWeight = 'bold';
+                    sourcesHeader.style.color = '#4a90e2';
+                    sourcesHeader.style.marginTop = '16px';
+                    sourcesHeader.style.marginBottom = '8px';
+                    sourcesHeader.style.display = 'flex';
+                    sourcesHeader.style.alignItems = 'center';
+                    sourcesHeader.style.gap = '6px';
+                    
+                    const sourcesIcon = document.createElement('span');
+                    sourcesIcon.textContent = '🔗';
+                    sourcesIcon.style.fontSize = '14px';
+                    
+                    const sourcesText = document.createElement('span');
+                    sourcesText.textContent = `Sources Analyzed (${researchData.sources.length})`;
+                    sourcesText.style.fontSize = '14px';
+                    
+                    sourcesHeader.appendChild(sourcesIcon);
+                    sourcesHeader.appendChild(sourcesText);
+                    
+                    const sourcesDiv = document.createElement('div');
+                    sourcesDiv.className = 'research-sources';
+                    sourcesDiv.style.maxHeight = '200px';
+                    sourcesDiv.style.overflowY = 'auto';
+                    sourcesDiv.style.padding = '8px';
+                    sourcesDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.2)';
+                    sourcesDiv.style.borderRadius = '4px';
+                    
+                    researchData.sources.slice(0, 10).forEach((source, index) => {
+                        const sourceDiv = document.createElement('div');
+                        sourceDiv.style.display = 'flex';
+                        sourceDiv.style.alignItems = 'center';
+                        sourceDiv.style.gap = '8px';
+                        sourceDiv.style.padding = '6px 0';
+                        sourceDiv.style.borderBottom = index < Math.min(researchData.sources.length, 10) - 1 ? '1px solid #333' : 'none';
+                        
+                        // Relevance indicator
+                        const relevanceDiv = document.createElement('div');
+                        relevanceDiv.style.minWidth = '60px';
+                        relevanceDiv.style.textAlign = 'center';
+                        relevanceDiv.style.fontSize = '11px';
+                        relevanceDiv.style.padding = '2px 6px';
+                        relevanceDiv.style.borderRadius = '12px';
+                        
+                        const score = source.relevance_score || 0;
+                        const meetsThreshold = source.meets_threshold;
+                        
+                        if (meetsThreshold) {
+                            relevanceDiv.style.backgroundColor = '#4caf50';
+                            relevanceDiv.style.color = 'white';
+                            relevanceDiv.textContent = `${score.toFixed(1)}/10`;
+                        } else {
+                            relevanceDiv.style.backgroundColor = '#ff5722';
+                            relevanceDiv.style.color = 'white';
+                            relevanceDiv.textContent = `${score.toFixed(1)}/10`;
+                        }
+                        
+                        // Source title and URL
+                        const sourceInfo = document.createElement('div');
+                        sourceInfo.style.flex = '1';
+                        sourceInfo.style.minWidth = '0';
+                        
+                        const sourceTitle = document.createElement('div');
+                        sourceTitle.style.fontSize = '13px';
+                        sourceTitle.style.color = '#e0e0e0';
+                        sourceTitle.style.fontWeight = '500';
+                        sourceTitle.style.whiteSpace = 'nowrap';
+                        sourceTitle.style.overflow = 'hidden';
+                        sourceTitle.style.textOverflow = 'ellipsis';
+                        sourceTitle.textContent = source.title || 'Unknown Title';
+                        
+                        const sourceUrl = document.createElement('div');
+                        sourceUrl.style.fontSize = '11px';
+                        sourceUrl.style.color = '#888';
+                        sourceUrl.style.whiteSpace = 'nowrap';
+                        sourceUrl.style.overflow = 'hidden';
+                        sourceUrl.style.textOverflow = 'ellipsis';
+                        sourceUrl.textContent = source.url || '';
+                        
+                        sourceInfo.appendChild(sourceTitle);
+                        sourceInfo.appendChild(sourceUrl);
+                        
+                        sourceDiv.appendChild(relevanceDiv);
+                        sourceDiv.appendChild(sourceInfo);
+                        sourcesDiv.appendChild(sourceDiv);
+                    });
+                    
+                    researchSummary.appendChild(sourcesHeader);
+                    researchSummary.appendChild(sourcesDiv);
+                }
+                
+                // Timing breakdown
+                if (researchData.timing_metrics && Object.keys(researchData.timing_metrics).length > 0) {
+                    const timingHeader = document.createElement('div');
+                    timingHeader.style.fontWeight = 'bold';
+                    timingHeader.style.color = '#4a90e2';
+                    timingHeader.style.marginTop = '16px';
+                    timingHeader.style.marginBottom = '8px';
+                    timingHeader.style.fontSize = '14px';
+                    timingHeader.style.display = 'flex';
+                    timingHeader.style.alignItems = 'center';
+                    timingHeader.style.gap = '6px';
+                    
+                    const timingIcon = document.createElement('span');
+                    timingIcon.textContent = '⏱️';
+                    timingIcon.style.fontSize = '14px';
+                    
+                    const timingText = document.createElement('span');
+                    timingText.textContent = 'Phase Timing';
+                    
+                    timingHeader.appendChild(timingIcon);
+                    timingHeader.appendChild(timingText);
+                    
+                    const timingDiv = document.createElement('div');
+                    timingDiv.style.display = 'grid';
+                    timingDiv.style.gridTemplateColumns = 'repeat(auto-fit, minmax(120px, 1fr))';
+                    timingDiv.style.gap = '8px';
+                    timingDiv.style.fontSize = '12px';
+                    
+                    Object.entries(researchData.timing_metrics).forEach(([phase, duration]) => {
+                        if (phase.endsWith('_duration')) {
+                            const phaseName = phase.replace('_duration', '').replace('_', ' ');
+                            const phaseDiv = document.createElement('div');
+                            phaseDiv.style.padding = '4px 8px';
+                            phaseDiv.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                            phaseDiv.style.borderRadius = '4px';
+                            phaseDiv.style.textAlign = 'center';
+                            
+                            const phaseNameDiv = document.createElement('div');
+                            phaseNameDiv.style.color = '#888';
+                            phaseNameDiv.style.textTransform = 'capitalize';
+                            phaseNameDiv.textContent = phaseName;
+                            
+                            const phaseDurationDiv = document.createElement('div');
+                            phaseDurationDiv.style.color = '#4a90e2';
+                            phaseDurationDiv.style.fontWeight = 'bold';
+                            phaseDurationDiv.textContent = `${duration.toFixed(1)}s`;
+                            
+                            phaseDiv.appendChild(phaseNameDiv);
+                            phaseDiv.appendChild(phaseDurationDiv);
+                            timingDiv.appendChild(phaseDiv);
+                        }
+                    });
+                    
+                    researchSummary.appendChild(timingHeader);
+                    researchSummary.appendChild(timingDiv);
+                }
+                
+                researchSummary.appendChild(header);
+                researchSummary.appendChild(metricsDiv);
+                messageDiv.appendChild(researchSummary);
+            }
+            
+            function calculateDuration(timingMetrics) {
+                if (!timingMetrics || Object.keys(timingMetrics).length === 0) return 'Unknown';
+                
+                const durations = Object.entries(timingMetrics)
+                    .filter(([key, value]) => key.endsWith('_duration'))
+                    .map(([key, value]) => value);
+                
+                const totalDuration = durations.reduce((sum, duration) => sum + duration, 0);
+                return `${totalDuration.toFixed(1)}s`;
+            }
+
             async function displayStreamingResponse(message) {
                 try {
                     // Get recent chat history from DOM
@@ -2027,6 +2427,15 @@
                                             reasoningContentDiv.scrollTop = reasoningContentDiv.scrollHeight;
                                         }
                                         chatMessages.scrollTop = chatMessages.scrollHeight;
+                                    } else if (data.type === 'research_step') {
+                                        // Handle DeepSeek research step indicators
+                                        handleResearchStep(messageDiv, data);
+                                    } else if (data.type === 'research_progress') {
+                                        // Handle DeepSeek research progress updates
+                                        handleResearchProgress(messageDiv, data);
+                                    } else if (data.type === 'research_complete') {
+                                        // Handle DeepSeek research completion
+                                        handleResearchComplete(messageDiv, data);
                                     } else if (data.type === 'chunk') {
                                         accumulatedContent += data.content;
                                         
@@ -2164,6 +2573,11 @@
                                         `;
                                         
                                         messageDiv.appendChild(statsDiv);
+                                        
+                                        // Add DeepSeek research data if available
+                                        if (data.research_data) {
+                                            addDeepSeekResearchDisplay(messageDiv, data.research_data);
+                                        }
                                         
                                         // Add search results if available
                                         if (data.search_results && data.search_results.length > 0) {

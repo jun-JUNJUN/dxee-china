@@ -25,6 +25,7 @@ A bidirectional information bridge application providing official China data to 
 ### Active Specifications
 - **web-research-relevance-enhancement**: Web検索による事実収集と関連性評価(70%以上)に基づく回答集計・要約機能
 - **comprehensive-analysis-fix**: Fix comprehensive analysis generation and result summarization in research system v3.07
+- **deepseek-button-integration**: Integrate test_deepseek_advanced_web_research3_07.py algorithm as DeepSeek button functionality
 - Current spec: Check `.kiro/specs/` for active specifications
 - Use `/kiro:spec-status [feature-name]` to check progress
 
@@ -50,17 +51,47 @@ MONGODB_URI=mongodb://localhost:27017
 MEILISEARCH_HOST=http://localhost:7701
 DEEPSEEK_API_KEY=your_key_here
 AUTH_SECRET_KEY=your_secret_here
+
+# DeepSeek Research Feature
+GOOGLE_API_KEY=your_google_api_key
+GOOGLE_CSE_ID=your_custom_search_engine_id
+BRIGHTDATA_API_KEY=your_bright_data_api_key
+DEEPSEEK_RESEARCH_TIMEOUT=600  # 10 minutes
+CACHE_EXPIRY_DAYS=30          # MongoDB cache expiry in days
 ```
 
 ## API Endpoints
 
 ### Chat System
-- `/chat/stream` - **Real-time streaming chat** (Server-Sent Events)
+- `/chat/stream` - **Real-time streaming chat** (Server-Sent Events) with DeepSeek research support
 - `/chat/message` - Legacy non-streaming chat
 - `/chat/history/{chat_id}` - Chat conversation history
 - `/chat/user` - User's chat list
 - `/chat/share/{message_id}` - Share/unshare messages
 - `/chat/shared` - Browse shared messages
+
+#### DeepSeek Research Mode
+The chat system supports enhanced research mode via `search_mode: "deepseek"` parameter:
+
+```json
+POST /chat/stream
+{
+    "message": "user question",
+    "chat_id": "uuid", 
+    "search_mode": "deepseek",
+    "chat_history": []
+}
+```
+
+**Response**: Server-Sent Events stream with research progress:
+```javascript
+data: {"type": "research_step", "step": 1, "description": "Initializing MongoDB cache", "progress": 10}
+data: {"type": "research_step", "step": 2, "description": "Generating search queries", "progress": 20}
+data: {"type": "research_step", "step": 3, "description": "Performing web search", "progress": 40}
+data: {"type": "research_step", "step": 4, "description": "Extracting content", "progress": 60}
+data: {"type": "research_step", "step": 5, "description": "Evaluating relevance", "progress": 80}
+data: {"type": "complete", "content": "formatted results", "search_results": [...]}
+```
 
 ### Authentication
 - `/auth/register` - Email registration
@@ -89,6 +120,12 @@ cd backend && ./run.sh
 
 # Test API
 ./backend/test_api.sh
+
+# Test DeepSeek Research
+python backend/test_deepseek_performance_benchmark.py
+python backend/test_deepseek_timeout.py
+python backend/test_deepseek_concurrent.py
+python backend/test_deepseek_result_validation.py
 ```
 
 ### Dependencies
@@ -115,6 +152,50 @@ cd backend && ./run.sh
 - Message sharing functionality
 - Async processing queues
 - Stream queues for real-time communication
+
+### Enhanced DeepSeek Research
+
+#### Core Features
+- **Advanced web research**: Multi-query generation and comprehensive content analysis
+- **Relevance evaluation**: AI-powered scoring system (0-10 scale) with 70% threshold filtering
+- **Answer aggregation**: High-relevance content consolidation and deduplication
+- **MongoDB caching**: Configurable content caching (default 30 days) for improved performance
+- **Real-time progress**: Live streaming updates during 10-step research process
+- **Statistical analysis**: Comprehensive summaries with numerical data extraction
+- **Source attribution**: Complete provenance tracking with confidence metrics
+- **Time management**: 10-minute research sessions with graceful timeout handling
+- **Resource optimization**: Token-aware content summarization and parallel processing
+
+#### Research Workflow
+1. **Query Generation**: AI-powered generation of 3-4 search queries for comprehensive coverage
+2. **Web Search**: Multi-query Google Custom Search API execution with result deduplication
+3. **Content Extraction**: Bright Data API for high-quality content extraction with caching
+4. **Relevance Evaluation**: AI scoring of content relevance (0-10 scale) with threshold filtering
+5. **Answer Aggregation**: Consolidation and ranking of high-relevance answers (≥7.0 score)
+6. **Statistical Analysis**: Numerical data extraction and comprehensive summary generation
+7. **Result Formatting**: Structured markdown output with confidence metrics and source attribution
+8. **Streaming Updates**: Real-time progress via Server-Sent Events throughout the process
+9. **Cache Management**: Intelligent content caching with configurable expiry and statistics
+10. **Performance Tracking**: Comprehensive metrics collection and timeout management
+
+#### Configuration Options
+```bash
+# Research timeout (default: 600 seconds)
+DEEPSEEK_RESEARCH_TIMEOUT=600
+
+# Cache expiry in days (default: 30 days)
+CACHE_EXPIRY_DAYS=30
+
+# Maximum concurrent research sessions (default: 3)
+MAX_CONCURRENT_RESEARCH=3
+```
+
+#### UI Integration
+- **DeepSeek Button**: Toggle button in chat interface for research mode
+- **Progress Indicators**: Real-time step-by-step progress display
+- **Results Display**: Enhanced formatting with relevance scores and source attribution
+- **Cache Metrics**: Cache hit/miss statistics and performance indicators
+- **Error Handling**: Graceful degradation with informative error messages
 
 ### Search
 - Meilisearch for fast content search
@@ -201,7 +282,7 @@ uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:appl
 - **Configuration**: Environment variables in `.env` file
 
 ## Development Guidelines
-- Think in English, generate responses in Japanese
+- Think in English, generate responses in Japanese, write in Japanese
 
 ## Spec-Driven Development Workflow
 

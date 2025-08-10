@@ -5,8 +5,12 @@ import logging
 import traceback
 import json
 import asyncio
+import os
 from datetime import datetime
 from bson import ObjectId, json_util
+
+# Import the enhanced research service
+from app.service.enhanced_deepseek_research_service import EnhancedDeepSeekResearchService
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -507,7 +511,13 @@ class ChatStreamHandler(tornado.web.RequestHandler):
             # Add stream queue for this chat
             self.application.stream_queues[chat_id] = stream_queue
             
-            # Add the message to the input queue for processing by DeepSeek with streaming flag
+            # Check if this is a DeepSeek research request
+            if search_mode == "deepseek":
+                logger.info(f"DeepSeek research mode detected for chat_id: {chat_id}")
+                await self._handle_deepseek_research(message, chat_id, user_id, message_id, stream_queue)
+                return
+            
+            # Add the message to the input queue for processing by regular DeepSeek with streaming flag
             try:
                 logger.info(f"Adding streaming message to input queue for chat_id: {chat_id}, message_id: {message_id}, mode: {search_mode}")
                 self.application.input_queue.append({
@@ -595,6 +605,158 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                 await self.flush()
             except:
                 pass
+    
+    async def _handle_deepseek_research(self, message: str, chat_id: str, user_id: str, message_id: str, stream_queue):
+        """Handle DeepSeek research mode with streaming progress updates"""
+        try:
+            # Initialize the enhanced research service
+            research_service = EnhancedDeepSeekResearchService(
+                mongodb_service=self.application.mongodb,
+                cache_expiry_days=int(os.environ.get('CACHE_EXPIRY_DAYS', 30))
+            )
+            await research_service.initialize()
+            
+            # Send research starting event
+            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'initializing', 'content': '🔬 Starting DeepSeek research...'})}\n\n")
+            await self.flush()
+            
+            # Send query generation step
+            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'query_generation', 'content': '📝 Generating search queries...'})}\n\n")
+            await self.flush()
+            
+            # Send web search step
+            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'web_search', 'content': '🔍 Searching the web for information...'})}\n\n")
+            await self.flush()
+            
+            # Send content extraction step
+            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'content_extraction', 'content': '📄 Extracting content from sources...'})}\n\n")
+            await self.flush()
+            
+            # Send relevance evaluation step
+            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'relevance_evaluation', 'content': '🎯 Evaluating content relevance...'})}\n\n")
+            await self.flush()
+            
+            # Send analysis step
+            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'analysis', 'content': '🧠 Generating comprehensive analysis...'})}\n\n")
+            await self.flush()
+            
+            # Conduct the research
+            research_results = await research_service.conduct_deepseek_research(message, chat_id)
+            
+            # Send progress updates based on research results
+            if research_results.get('success'):
+                steps = research_results.get('steps', {})
+                
+                # Update progress based on completed steps
+                if 'query_generation' in steps:
+                    queries = steps['query_generation'].get('queries', [])
+                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'queries_generated', 'content': f'Generated {len(queries)} search queries'})}\n\n")
+                    await self.flush()
+                
+                if 'web_search' in steps:
+                    total_results = steps['web_search'].get('total_results', 0)
+                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'search_completed', 'content': f'Found {total_results} search results'})}\n\n")
+                    await self.flush()
+                
+                if 'content_extraction' in steps:
+                    successful = steps['content_extraction'].get('successful_extractions', 0)
+                    total = steps['content_extraction'].get('total_sources', 0)
+                    cache_hits = steps['content_extraction'].get('cache_hits', 0)
+                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'extraction_completed', 'content': f'Extracted content from {successful}/{total} sources ({cache_hits} from cache)'})}\n\n")
+                    await self.flush()
+                
+                if 'relevance_evaluation' in steps:
+                    high_relevance = steps['relevance_evaluation'].get('high_relevance_count', 0)
+                    total_evaluated = steps['relevance_evaluation'].get('total_evaluated', 0)
+                    avg_relevance = steps['relevance_evaluation'].get('average_relevance', 0)
+                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'relevance_completed', 'content': f'{high_relevance}/{total_evaluated} sources meet relevance threshold (avg: {avg_relevance:.1f}/10)'})}\n\n")
+                    await self.flush()
+                
+                # Prepare final analysis content
+                analysis_content = research_results.get('analysis', {})
+                if isinstance(analysis_content, dict):
+                    final_content = analysis_content.get('analysis', 'Research completed successfully.')
+                    confidence = analysis_content.get('confidence', 0.0)
+                    sources_used = analysis_content.get('sources_used', 0)
+                else:
+                    final_content = str(analysis_content) if analysis_content else 'Research completed successfully.'
+                    confidence = 0.7
+                    sources_used = len(research_results.get('sources', []))
+                
+                # Add research metadata to the response
+                metadata_summary = f"\n\n---\n**Research Summary:**\n"
+                metadata_summary += f"- Sources analyzed: {sources_used}\n"
+                metadata_summary += f"- Confidence level: {confidence*100:.0f}%\n"
+                
+                timing_metrics = research_results.get('timing_metrics', {})
+                if timing_metrics:
+                    total_duration = sum(v for k, v in timing_metrics.items() if k.endswith('_duration'))
+                    metadata_summary += f"- Research time: {total_duration:.1f}s\n"
+                
+                cache_perf = research_results.get('search_metrics', {}).get('cache_performance', {})
+                if cache_perf:
+                    hit_rate = cache_perf.get('hit_rate', 0) * 100
+                    metadata_summary += f"- Cache hit rate: {hit_rate:.1f}%\n"
+                
+                full_content = final_content + metadata_summary
+                
+            else:
+                # Research failed
+                error_msg = research_results.get('error', 'Research failed for unknown reason')
+                full_content = f"❌ Research failed: {error_msg}\n\nFalling back to regular chat mode."
+                logger.error(f"DeepSeek research failed for chat_id {chat_id}: {error_msg}")
+            
+            # Send final research complete event
+            self.write(f"data: {json.dumps({'type': 'research_complete', 'content': '✅ Research completed!'})}\n\n")
+            await self.flush()
+            
+            # Send the final analysis as regular content chunks (to simulate streaming)
+            words = full_content.split()
+            accumulated_content = ""
+            
+            for i, word in enumerate(words):
+                accumulated_content += word + " "
+                
+                # Send chunks of 3-5 words at a time
+                if i % 4 == 0 and i > 0:
+                    chunk_content = " ".join(words[max(0, i-3):i+1])
+                    self.write(f"data: {json.dumps({'type': 'chunk', 'content': chunk_content + ' ', 'chat_id': chat_id, 'message_id': message_id})}\n\n")
+                    await self.flush()
+                    await asyncio.sleep(0.05)  # Small delay for realistic streaming
+            
+            # Send final completion
+            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'research_data': research_results})}\n\n")
+            await self.flush()
+            
+            # Store the complete AI response in MongoDB
+            response_doc = {
+                'message_id': str(uuid.uuid4()),
+                'chat_id': chat_id,
+                'user_id': user_id,
+                'message': accumulated_content.strip(),
+                'timestamp': datetime.utcnow(),
+                'type': 'assistant',
+                'search_results': research_results.get('sources', []),
+                'research_data': research_results,  # Store full research data
+                'shared': False
+            }
+            
+            try:
+                await self.application.mongodb.create_message(response_doc)
+                logger.info(f"DeepSeek research response stored successfully for chat_id: {chat_id}")
+            except Exception as e:
+                logger.error(f"Error storing DeepSeek research response: {e}")
+            
+            # Cleanup resources
+            await research_service.cleanup()
+            
+        except Exception as e:
+            logger.error(f"Error in DeepSeek research: {e}")
+            logger.error(traceback.format_exc())
+            
+            # Send error to client
+            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Research error: {str(e)}'})}\n\n")
+            await self.flush()
 
 class SharedMessagesHandler(tornado.web.RequestHandler):
     """
