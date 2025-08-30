@@ -24,7 +24,10 @@ Modern async-first Python web application with real-time streaming capabilities,
 ### AI & Research
 - **DeepSeek API**: AI chat completions with streaming support
 - **OpenAI Client**: 1.82.0 - API client for DeepSeek integration
+- **Serper API**: Professional web search and content scraping service
 - **Advanced Research System**: Multi-source content extraction and reasoning
+- **MCP Integration**: Model Context Protocol patterns from 'mcp-server-serper'
+- **Deep-Thinking Algorithms**: Inspired by 'jan' project for enhanced reasoning
 - **Content Processing**: BeautifulSoup4, newspaper3k, readability-lxml
 
 ### Authentication
@@ -58,6 +61,9 @@ MEILISEARCH_API_KEY=masterKey
 # AI Service
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
 DEEPSEEK_API_URL=https://api.deepseek.com
+
+# Web Research
+SERPER_API_KEY=your_serper_api_key_here
 
 # Authentication
 AUTH_SECRET_KEY=your_auth_secret_key_here

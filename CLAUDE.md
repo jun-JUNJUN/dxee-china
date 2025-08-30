@@ -121,11 +121,14 @@ cd backend && ./run.sh
 # Test API
 ./backend/test_api.sh
 
+# Run Python scripts (ALWAYS use this pattern)
+./activate_backend.sh && cd ./backend/ && uv run python script_name.py
+
 # Test DeepSeek Research
-python backend/test_deepseek_performance_benchmark.py
-python backend/test_deepseek_timeout.py
-python backend/test_deepseek_concurrent.py
-python backend/test_deepseek_result_validation.py
+./activate_backend.sh && cd ./backend/ && uv run python test_deepseek_performance_benchmark.py
+./activate_backend.sh && cd ./backend/ && uv run python test_deepseek_timeout.py
+./activate_backend.sh && cd ./backend/ && uv run python test_deepseek_concurrent.py
+./activate_backend.sh && cd ./backend/ && uv run python test_deepseek_result_validation.py
 ```
 
 ### Dependencies

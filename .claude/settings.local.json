@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mongosh:*)",
+      "Bash(rg:*)",
+      "Bash(./activate_backend.sh:*)",
+      "Bash(uv run:*)",
+      "Bash(*uv run python*:*)",
+      "Bash(gtimeout 10m uv run python test_deepseek_advanced_web_research3_01.py)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(cd /Users/jun77/Documents/Dropbox/a_root/code/deepschina && ./activate_backend.sh && cd ./backend/ && uv run python *:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": false
+}

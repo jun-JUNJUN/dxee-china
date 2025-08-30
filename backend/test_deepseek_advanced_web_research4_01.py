@@ -290,6 +290,133 @@ class TokenManager:
             return content[:max_length] + "..."
         
         return summarized
+    
+    def estimate_cost(self, input_tokens: int, output_tokens: int, model: str = "deepseek-chat") -> float:
+        """Estimate cost in USD based on token usage"""
+        # DeepSeek pricing (as of 2024)
+        # Input: $0.14 per 1M tokens, Output: $0.28 per 1M tokens
+        DEEPSEEK_INPUT_COST_PER_1M = 0.14
+        DEEPSEEK_OUTPUT_COST_PER_1M = 0.28
+        
+        if model.startswith("deepseek"):
+            input_cost = (input_tokens / 1_000_000) * DEEPSEEK_INPUT_COST_PER_1M
+            output_cost = (output_tokens / 1_000_000) * DEEPSEEK_OUTPUT_COST_PER_1M
+            return input_cost + output_cost
+        
+        # Fallback generic pricing
+        return (input_tokens + output_tokens) / 1_000_000 * 0.20
+    
+    def create_batches(self, content_list: List[str], max_tokens_per_batch: int = 15000) -> List[List[str]]:
+        """Create batches of content that fit within token limits"""
+        batches = []
+        current_batch = []
+        current_tokens = 0
+        
+        for content in content_list:
+            content_tokens = self.count_tokens(content)
+            
+            # If single content exceeds limit, optimize it
+            if content_tokens > max_tokens_per_batch:
+                # Process current batch if not empty
+                if current_batch:
+                    batches.append(current_batch)
+                    current_batch = []
+                    current_tokens = 0
+                
+                # Optimize large content and add as single batch
+                optimized = self.optimize_content(content, max_tokens_per_batch * 4)  # 4 chars per token
+                batches.append([optimized])
+                continue
+            
+            # Check if adding this content would exceed limit
+            if current_tokens + content_tokens > max_tokens_per_batch:
+                # Save current batch and start new one
+                if current_batch:
+                    batches.append(current_batch)
+                current_batch = [content]
+                current_tokens = content_tokens
+            else:
+                # Add to current batch
+                current_batch.append(content)
+                current_tokens += content_tokens
+        
+        # Add final batch if not empty
+        if current_batch:
+            batches.append(current_batch)
+        
+        return batches
+    
+    def calculate_batch_stats(self, batches: List[List[str]]) -> Dict[str, Any]:
+        """Calculate statistics for batching"""
+        total_items = sum(len(batch) for batch in batches)
+        total_tokens = sum(
+            sum(self.count_tokens(content) for content in batch)
+            for batch in batches
+        )
+        
+        batch_sizes = [len(batch) for batch in batches]
+        batch_tokens = [
+            sum(self.count_tokens(content) for content in batch)
+            for batch in batches
+        ]
+        
+        return {
+            "total_batches": len(batches),
+            "total_items": total_items,
+            "total_tokens": total_tokens,
+            "avg_batch_size": sum(batch_sizes) / len(batch_sizes) if batch_sizes else 0,
+            "avg_tokens_per_batch": sum(batch_tokens) / len(batch_tokens) if batch_tokens else 0,
+            "min_batch_size": min(batch_sizes) if batch_sizes else 0,
+            "max_batch_size": max(batch_sizes) if batch_sizes else 0,
+            "estimated_cost": self.estimate_cost(total_tokens, total_tokens // 4)  # Assume 1:4 input:output ratio
+        }
+    
+    def optimize_for_cost(self, content_list: List[str], target_cost: float = 1.0) -> List[str]:
+        """Optimize content list to stay within target cost"""
+        optimized = []
+        current_cost = 0.0
+        
+        for content in content_list:
+            tokens = self.count_tokens(content)
+            estimated_cost = self.estimate_cost(tokens, tokens // 4)
+            
+            if current_cost + estimated_cost > target_cost:
+                # Try to optimize content to fit budget
+                remaining_budget = target_cost - current_cost
+                if remaining_budget > 0.01:  # At least 1 cent
+                    # Calculate max tokens for remaining budget
+                    max_tokens = int((remaining_budget / 0.20) * 1_000_000)  # Conservative estimate
+                    optimized_content = self.optimize_content(content, max_tokens * 4)
+                    optimized.append(optimized_content)
+                break
+            else:
+                optimized.append(content)
+                current_cost += estimated_cost
+        
+        return optimized
+    
+    def get_usage_report(self, token_usage_history: List[Dict[str, int]]) -> Dict[str, Any]:
+        """Generate usage and cost report"""
+        if not token_usage_history:
+            return {"error": "No usage history provided"}
+        
+        total_input_tokens = sum(usage.get("input_tokens", 0) for usage in token_usage_history)
+        total_output_tokens = sum(usage.get("output_tokens", 0) for usage in token_usage_history)
+        total_cost = self.estimate_cost(total_input_tokens, total_output_tokens)
+        
+        return {
+            "total_requests": len(token_usage_history),
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens,
+            "total_cost_usd": round(total_cost, 4),
+            "avg_tokens_per_request": (total_input_tokens + total_output_tokens) / len(token_usage_history),
+            "avg_cost_per_request": round(total_cost / len(token_usage_history), 6),
+            "cost_breakdown": {
+                "input_cost": round(self.estimate_cost(total_input_tokens, 0), 4),
+                "output_cost": round(self.estimate_cost(0, total_output_tokens), 4)
+            }
+        }
 
 # =============================================================================
 # Serper API Client
@@ -860,6 +987,110 @@ Answer:"""
         stats["dates"] = sorted(list(set(stats["dates"])))[:5]
         
         return stats
+    
+    async def reason(self, prompt: str, max_tokens: int = 1000) -> str:
+        """General reasoning method for any prompt"""
+        try:
+            response = await self.client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=max_tokens
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            logger.error(f"❌ Reasoning failed: {e}")
+            return f"Error: Unable to generate reasoning - {str(e)}"
+    
+    async def reason_stream(self, prompt: str, max_tokens: int = 1000):
+        """Streaming version of reasoning method"""
+        try:
+            stream = await self.client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=max_tokens,
+                stream=True
+            )
+            
+            async for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    yield chunk.choices[0].delta.content
+                    
+        except Exception as e:
+            logger.error(f"❌ Streaming reasoning failed: {e}")
+            yield f"Error: Unable to generate streaming reasoning - {str(e)}"
+    
+    async def analyze_with_streaming(self, question: str):
+        """Analyze question with streaming response"""
+        prompt = f"""Analyze this research question and extract key information:
+
+Question: {question}
+
+Provide a detailed analysis including:
+1. Main topic identification
+2. Key concepts and entities
+3. Question type and complexity
+4. Suggested research angles
+5. Expected information types
+
+Analysis:"""
+
+        try:
+            stream = await self.client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=1000,
+                stream=True
+            )
+            
+            async for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    content = chunk.choices[0].delta.content
+                    yield content
+                
+        except Exception as e:
+            logger.error(f"❌ Streaming analysis failed: {e}")
+            yield f"Error: Unable to generate streaming analysis - {str(e)}"
+    
+    async def analyze_question_complete(self, question: str) -> dict:
+        """Complete analysis method that returns full result"""
+        prompt = f"""Analyze this research question and extract key information:
+
+Question: {question}
+
+Provide a JSON response with:
+- main_topic: primary topic
+- key_concepts: list of key concepts
+- question_type: type of question
+- complexity: complexity level
+- research_angles: suggested research approaches
+
+Response:"""
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=800
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            # Try to parse as JSON
+            try:
+                import json
+                return json.loads(content)
+            except:
+                return {"analysis": content, "raw_response": True}
+                
+        except Exception as e:
+            logger.error(f"❌ Complete analysis failed: {e}")
+            return {"error": f"Unable to generate analysis - {str(e)}"}
 
 # =============================================================================
 # Result Processing

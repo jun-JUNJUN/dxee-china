@@ -16,6 +16,9 @@ A bidirectional information bridge application providing official China data to 
 
 2. **🔍 Advanced Web Research System**
    - Enhanced web research with relevance scoring (70%+ threshold)
+   - Professional Serper API integration for advanced search capabilities
+   - Deep-thinking algorithms inspired by the 'jan' project
+   - MCP (Model Context Protocol) patterns from 'mcp-server-serper'
    - Multi-source content extraction and aggregation
    - AI-powered reasoning and comprehensive analysis
    - Statistical summary generation and result optimization

@@ -60,6 +60,7 @@ backend/
 ├── requirements.txt         # Python dependencies
 ├── run.sh                   # Development server script
 ├── test_api.sh              # API testing script
+├── test_deepseek_advanced_web_research*.py  # Research system evolution (v3.01-v4.01)
 ├── wsgi.py                  # Production WSGI configuration
 ├── .env.example             # Environment variables template
 └── backend.log              # Application logs
@@ -203,6 +204,13 @@ async def stream_response(self):
 - **Graceful Degradation**: Fallback to non-streaming mode on errors
 - **Memory Management**: Automatic cleanup of stream resources
 
+### 5. Research System Evolution
+- **Algorithmic Versioning**: Iterative research algorithm development (v3.01-v4.01)
+- **MCP Integration**: Model Context Protocol patterns for enhanced reasoning
+- **Deep-Thinking Patterns**: Inspired by 'jan' project for multi-perspective analysis
+- **API Evolution**: Progressive enhancement from Google CSE to Serper API
+- **Testing-Driven**: Test files serve as algorithm implementation and validation
+
 ## Development Best Practices
 
 ### 1. Code Quality
@@ -214,6 +222,7 @@ async def stream_response(self):
 ### 2. Testing Strategy
 - **API Testing**: Automated scripts for endpoint validation
 - **Integration Testing**: Test external service connections
+- **Algorithm Evolution**: Versioned test files for research system development
 - **Manual Testing**: User workflow validation for streaming features
 - **Health Checks**: Built-in service monitoring endpoints
 
