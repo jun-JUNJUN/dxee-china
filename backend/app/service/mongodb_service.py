@@ -3,7 +3,7 @@ import logging
 import motor.motor_tornado
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
 
 # Get logger
@@ -592,6 +592,18 @@ class MongoDBService:
         self._ensure_client()
         return self._db.api_usage_logs
     
+    @property
+    def deepthink_cache(self):
+        """Get deep-think content cache collection"""
+        self._ensure_client()
+        return self._db.deepthink_cache
+    
+    @property
+    def deepthink_results(self):
+        """Get deep-think results collection"""
+        self._ensure_client()
+        return self._db.deepthink_results
+    
     async def create_research_indexes(self, cache_expiry_days=30):
         """
         Create indexes for research-related collections
@@ -626,6 +638,95 @@ class MongoDBService:
         except Exception as e:
             logger.error(f"Error creating research indexes: {e}")
             raise
+    
+    async def create_deepthink_indexes(self, cache_expiry_days=30):
+        """
+        Create indexes for deep-think specific collections
+        
+        Args:
+            cache_expiry_days: TTL for cache entries in days
+        """
+        try:
+            # Deep-think cache indexes
+            await self._create_index_safe(self.deepthink_cache, "content_hash", unique=True)
+            await self._create_index_safe(self.deepthink_cache, "url")
+            await self._create_index_safe(self.deepthink_cache, "request_id")
+            # Text index for content search - create with safe fallback
+            try:
+                await self.deepthink_cache.create_index([("content", "text"), ("query_text", "text")])
+            except Exception as e:
+                logger.debug(f"Text index creation failed (may already exist): {e}")
+            await self._create_index_safe(self.deepthink_cache, "hit_count")
+            await self._create_index_safe(self.deepthink_cache, "relevance_score")
+            
+            # TTL index with unique name for cache
+            await self._create_ttl_index_safe(
+                self.deepthink_cache, 
+                "created_at", 
+                "deepthink_cache_ttl",
+                cache_expiry_days * 24 * 3600
+            )
+            
+            # Deep-think results indexes  
+            await self._create_index_safe(self.deepthink_results, "request_id", unique=True)
+            await self._create_index_safe(self.deepthink_results, "chat_id")
+            await self._create_index_safe(self.deepthink_results, "user_id")
+            await self._create_index_safe(self.deepthink_results, "created_at")
+            await self._create_index_safe(self.deepthink_results, "confidence")
+            await self._create_index_safe(self.deepthink_results, "execution_time")
+            
+            # TTL index with unique name for results
+            await self._create_ttl_index_safe(
+                self.deepthink_results,
+                "created_at", 
+                "deepthink_results_ttl",
+                cache_expiry_days * 24 * 3600
+            )
+            
+            logger.info(f"Deep-think indexes created successfully with {cache_expiry_days} day TTL")
+            
+        except Exception as e:
+            logger.error(f"Error creating deep-think indexes: {e}")
+            raise
+    
+    async def _create_index_safe(self, collection, keys, **kwargs):
+        """
+        Create index safely, ignoring duplicate key errors
+        """
+        try:
+            await collection.create_index(keys, **kwargs)
+        except Exception as e:
+            if "already exists" in str(e) or "duplicate key" in str(e).lower():
+                logger.debug(f"Index already exists (ignoring): {keys}")
+            else:
+                raise
+    
+    async def _create_ttl_index_safe(self, collection, field, index_name, expire_after_seconds):
+        """
+        Create TTL index safely, handling naming conflicts
+        """
+        try:
+            await collection.create_index(
+                field,
+                name=index_name,
+                expireAfterSeconds=expire_after_seconds
+            )
+        except Exception as e:
+            if "already exists" in str(e) or "IndexOptionsConflict" in str(e):
+                logger.debug(f"TTL index conflict for {index_name}, attempting to recreate...")
+                try:
+                    # Drop the conflicting index and recreate
+                    await collection.drop_index(index_name)
+                    await collection.create_index(
+                        field,
+                        name=index_name,
+                        expireAfterSeconds=expire_after_seconds
+                    )
+                    logger.info(f"TTL index recreated: {index_name}")
+                except Exception as recreate_error:
+                    logger.warning(f"Could not recreate TTL index {index_name}: {recreate_error}")
+            else:
+                raise
     
     # Web Content Cache Methods
     
@@ -936,3 +1037,518 @@ class MongoDBService:
                 'success_rate': 0,
                 'api_breakdown': []
             }
+    
+    # Deep-Think Cache Methods
+    
+    async def cache_scraped_content(self, url: str, content: str, query_text: str, 
+                                   request_id: str, relevance_score: float = 0.0):
+        """
+        Cache scraped content with deduplication using content hash
+        
+        Args:
+            url: Source URL
+            content: Scraped content text
+            query_text: Query that generated this content
+            request_id: Associated deep-think request ID
+            relevance_score: AI-evaluated relevance score (0-10)
+            
+        Returns:
+            Tuple of (cache_hit: bool, content_hash: str)
+        """
+        try:
+            import hashlib
+            
+            # Generate content hash for deduplication
+            content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
+            
+            # Check if content already exists
+            existing = await self.deepthink_cache.find_one({'content_hash': content_hash})
+            
+            if existing:
+                # Update hit count and request tracking
+                await self.deepthink_cache.update_one(
+                    {'content_hash': content_hash},
+                    {
+                        '$inc': {'hit_count': 1},
+                        '$set': {'last_accessed': datetime.utcnow()},
+                        '$addToSet': {'request_ids': request_id}
+                    }
+                )
+                logger.info(f"Content cache hit for URL: {url}")
+                return (True, content_hash)
+            else:
+                # Cache new content
+                cache_data = {
+                    'content_hash': content_hash,
+                    'url': url,
+                    'content': content,
+                    'query_text': query_text,
+                    'request_id': request_id,
+                    'request_ids': [request_id],
+                    'relevance_score': relevance_score,
+                    'hit_count': 1,
+                    'created_at': datetime.utcnow(),
+                    'last_accessed': datetime.utcnow(),
+                    'word_count': len(content.split())
+                }
+                
+                await self.deepthink_cache.insert_one(cache_data)
+                logger.info(f"Content cached for URL: {url}")
+                return (False, content_hash)
+                
+        except Exception as e:
+            logger.error(f"Error caching scraped content for {url}: {e}")
+            return (False, "")
+    
+    async def get_cached_scraped_content(self, content_hash: str):
+        """
+        Retrieve cached content by hash with hit tracking
+        
+        Args:
+            content_hash: Content hash to lookup
+            
+        Returns:
+            Cached content data or None
+        """
+        try:
+            cached = await self.deepthink_cache.find_one({'content_hash': content_hash})
+            
+            if cached:
+                # Increment hit count
+                await self.deepthink_cache.update_one(
+                    {'content_hash': content_hash},
+                    {
+                        '$inc': {'hit_count': 1},
+                        '$set': {'last_accessed': datetime.utcnow()}
+                    }
+                )
+                return cached
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error retrieving cached content {content_hash}: {e}")
+            return None
+    
+    async def search_cached_scraped_content(self, query_text: str, limit: int = 20):
+        """
+        Search cached content by query text similarity
+        
+        Args:
+            query_text: Text to search for
+            limit: Maximum results to return
+            
+        Returns:
+            List of matching cached content
+        """
+        try:
+            # Try MongoDB text search first
+            try:
+                cursor = self.deepthink_cache.find(
+                    {'$text': {'$search': query_text}},
+                    {'score': {'$meta': 'textScore'}}
+                ).sort([('score', {'$meta': 'textScore'}), ('hit_count', -1)]).limit(limit)
+                
+                results = []
+                async for doc in cursor:
+                    results.append(doc)
+                
+                if results:
+                    logger.info(f"Found {len(results)} cached content items via text search for query: {query_text[:50]}...")
+                    return results
+            except Exception as text_search_error:
+                logger.debug(f"Text search failed, falling back to regex search: {text_search_error}")
+            
+            # Fallback to regex search if text search fails
+            regex_pattern = {'$regex': query_text, '$options': 'i'}
+            query = {
+                '$or': [
+                    {'content': regex_pattern},
+                    {'query_text': regex_pattern},
+                    {'url': regex_pattern}
+                ]
+            }
+            
+            cursor = self.deepthink_cache.find(query).sort('hit_count', -1).limit(limit)
+            results = []
+            async for doc in cursor:
+                results.append(doc)
+            
+            logger.info(f"Found {len(results)} cached content items via regex search for query: {query_text[:50]}...")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error searching cached scraped content: {e}")
+            return []
+    
+    async def get_deepthink_cache_stats(self):
+        """
+        Get deep-think cache statistics and metrics
+        
+        Returns:
+            Dictionary with cache performance metrics
+        """
+        try:
+            total_entries = await self.deepthink_cache.count_documents({})
+            
+            # Calculate total hits and unique requests
+            pipeline_hits = [
+                {'$group': {
+                    '_id': None, 
+                    'total_hits': {'$sum': '$hit_count'},
+                    'unique_requests': {'$sum': {'$size': '$request_ids'}},
+                    'avg_relevance': {'$avg': '$relevance_score'},
+                    'avg_word_count': {'$avg': '$word_count'}
+                }}
+            ]
+            
+            hits_result = []
+            async for doc in self.deepthink_cache.aggregate(pipeline_hits):
+                hits_result.append(doc)
+            
+            stats = hits_result[0] if hits_result else {}
+            
+            # Get most accessed content
+            most_accessed = []
+            cursor = self.deepthink_cache.find(
+                {}, {'url': 1, 'hit_count': 1, 'relevance_score': 1}
+            ).sort('hit_count', -1).limit(5)
+            
+            async for doc in cursor:
+                most_accessed.append({
+                    'url': doc.get('url', 'Unknown'),
+                    'hit_count': doc.get('hit_count', 0),
+                    'relevance_score': doc.get('relevance_score', 0.0)
+                })
+            
+            return {
+                'total_entries': total_entries,
+                'total_hits': stats.get('total_hits', 0),
+                'unique_requests': stats.get('unique_requests', 0),
+                'hit_rate': round((stats.get('total_hits', 0) / max(stats.get('unique_requests', 1), 1)), 2),
+                'avg_relevance_score': round(stats.get('avg_relevance', 0.0), 2),
+                'avg_word_count': round(stats.get('avg_word_count', 0.0), 0),
+                'most_accessed': most_accessed
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting deep-think cache stats: {e}")
+            return {
+                'total_entries': 0,
+                'total_hits': 0,
+                'unique_requests': 0,
+                'hit_rate': 0,
+                'avg_relevance_score': 0.0,
+                'avg_word_count': 0,
+                'most_accessed': []
+            }
+    
+    # Deep-Think Results Methods
+    
+    async def store_deepthink_result(self, result_data):
+        """
+        Store complete deep-think result
+        
+        Args:
+            result_data: Complete deep-think result data
+            
+        Returns:
+            Inserted result ID
+        """
+        try:
+            result_data['created_at'] = datetime.utcnow()
+            result_data['updated_at'] = datetime.utcnow()
+            
+            result = await self.deepthink_results.insert_one(result_data)
+            logger.info(f"Deep-think result stored: {result.inserted_id}")
+            return result.inserted_id
+            
+        except Exception as e:
+            logger.error(f"Error storing deep-think result: {e}")
+            raise
+    
+    async def get_deepthink_result(self, request_id: str):
+        """
+        Get deep-think result by request ID
+        
+        Args:
+            request_id: Unique request identifier
+            
+        Returns:
+            Deep-think result data or None
+        """
+        try:
+            result = await self.deepthink_results.find_one({'request_id': request_id})
+            return result
+        except Exception as e:
+            logger.error(f"Error getting deep-think result {request_id}: {e}")
+            return None
+    
+    async def get_user_deepthink_results(self, user_id: str, limit: int = 10):
+        """
+        Get recent deep-think results for a user
+        
+        Args:
+            user_id: User identifier
+            limit: Maximum results to return
+            
+        Returns:
+            List of deep-think results
+        """
+        try:
+            cursor = self.deepthink_results.find({'user_id': user_id}) \
+                .sort('created_at', -1) \
+                .limit(limit)
+            
+            results = []
+            async for doc in cursor:
+                results.append(doc)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error getting user deep-think results: {e}")
+            return []
+    
+    # Deep-think chat history integration methods
+    
+    async def get_chat_messages_with_deepthink(self, chat_id: str, limit: int = 100, skip: int = 0):
+        """
+        Get chat messages with enhanced deep-think data
+        
+        Args:
+            chat_id: Chat identifier
+            limit: Maximum messages to return
+            skip: Number of messages to skip
+            
+        Returns:
+            List of messages with deep-think metadata expanded
+        """
+        try:
+            # Get regular messages
+            messages = await self.get_chat_messages(chat_id, limit, skip)
+            
+            # Enhance messages with deep-think data
+            enhanced_messages = []
+            for message in messages:
+                # Check if this message has deep-think data
+                if message.get('deepthink_data'):
+                    # Add deep-think metadata to message
+                    deepthink_data = message['deepthink_data']
+                    message['has_deepthink'] = True
+                    message['deepthink_summary'] = {
+                        'confidence_score': deepthink_data.get('confidence_score', 0.0),
+                        'total_sources': deepthink_data.get('total_sources', 0),
+                        'processing_time': deepthink_data.get('processing_time', 0.0),
+                        'cache_hit_rate': (
+                            deepthink_data.get('cache_hits', 0) / 
+                            max(deepthink_data.get('cache_hits', 0) + deepthink_data.get('cache_misses', 0), 1)
+                        )
+                    }
+                else:
+                    message['has_deepthink'] = False
+                
+                enhanced_messages.append(message)
+            
+            return enhanced_messages
+            
+        except Exception as e:
+            logger.error(f"Error getting enhanced chat messages: {e}")
+            # Fallback to regular messages
+            return await self.get_chat_messages(chat_id, limit, skip)
+    
+    async def get_deepthink_messages_for_chat(self, chat_id: str):
+        """
+        Get only deep-think messages from a chat
+        
+        Args:
+            chat_id: Chat identifier
+            
+        Returns:
+            List of deep-think messages with full metadata
+        """
+        try:
+            cursor = self.messages.find({
+                "chat_id": chat_id,
+                "type": "assistant",
+                "deepthink_data": {"$exists": True}
+            }).sort("timestamp", -1)
+            
+            deepthink_messages = []
+            async for message in cursor:
+                deepthink_messages.append(message)
+            
+            logger.info(f"Found {len(deepthink_messages)} deep-think messages for chat {chat_id}")
+            return deepthink_messages
+            
+        except Exception as e:
+            logger.error(f"Error getting deep-think messages: {e}")
+            return []
+    
+    async def get_user_deepthink_chat_summary(self, user_id: str, days: int = 30):
+        """
+        Get summary of user's deep-think usage over specified period
+        
+        Args:
+            user_id: User identifier  
+            days: Number of days to look back
+            
+        Returns:
+            Usage summary with statistics
+        """
+        try:
+            since_date = datetime.utcnow() - timedelta(days=days)
+            
+            # Aggregate deep-think usage statistics
+            pipeline = [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "type": "assistant",
+                        "deepthink_data": {"$exists": True},
+                        "timestamp": {"$gte": since_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_deepthink_messages": {"$sum": 1},
+                        "avg_confidence": {"$avg": "$deepthink_data.confidence_score"},
+                        "avg_sources": {"$avg": "$deepthink_data.total_sources"},
+                        "avg_processing_time": {"$avg": "$deepthink_data.processing_time"},
+                        "total_cache_hits": {"$sum": "$deepthink_data.cache_hits"},
+                        "total_cache_misses": {"$sum": "$deepthink_data.cache_misses"}
+                    }
+                }
+            ]
+            
+            async for result in self.messages.aggregate(pipeline):
+                summary = {
+                    'user_id': user_id,
+                    'period_days': days,
+                    'total_deepthink_requests': result.get('total_deepthink_messages', 0),
+                    'average_confidence': round(result.get('avg_confidence', 0.0), 3),
+                    'average_sources_per_request': round(result.get('avg_sources', 0.0), 1),
+                    'average_processing_time': round(result.get('avg_processing_time', 0.0), 2),
+                    'total_cache_hits': result.get('total_cache_hits', 0),
+                    'total_cache_misses': result.get('total_cache_misses', 0),
+                    'cache_hit_rate': (
+                        result.get('total_cache_hits', 0) / 
+                        max(result.get('total_cache_hits', 0) + result.get('total_cache_misses', 0), 1)
+                    )
+                }
+                return summary
+            
+            # No results found
+            return {
+                'user_id': user_id,
+                'period_days': days,
+                'total_deepthink_requests': 0,
+                'average_confidence': 0.0,
+                'average_sources_per_request': 0.0,
+                'average_processing_time': 0.0,
+                'total_cache_hits': 0,
+                'total_cache_misses': 0,
+                'cache_hit_rate': 0.0
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting deep-think chat summary: {e}")
+            return None
+    
+    async def search_deepthink_content(self, query: str, user_id: str = None, limit: int = 10):
+        """
+        Search across deep-think results for relevant content
+        
+        Args:
+            query: Search query
+            user_id: Optional user filter
+            limit: Maximum results to return
+            
+        Returns:
+            List of matching deep-think results
+        """
+        try:
+            # Create search filter
+            match_filter = {
+                "type": "assistant",
+                "deepthink_data": {"$exists": True},
+                "$or": [
+                    {"message": {"$regex": query, "$options": "i"}},
+                    {"deepthink_data.question": {"$regex": query, "$options": "i"}},
+                    {"deepthink_data.comprehensive_answer": {"$regex": query, "$options": "i"}}
+                ]
+            }
+            
+            # Add user filter if specified
+            if user_id:
+                match_filter["user_id"] = user_id
+            
+            cursor = self.messages.find(match_filter) \
+                .sort("timestamp", -1) \
+                .limit(limit)
+            
+            search_results = []
+            async for message in cursor:
+                # Extract relevant info for search results
+                deepthink_data = message.get('deepthink_data', {})
+                search_result = {
+                    'message_id': str(message['_id']),
+                    'chat_id': message['chat_id'],
+                    'question': deepthink_data.get('question', ''),
+                    'summary_answer': deepthink_data.get('summary_answer', message.get('message', '')),
+                    'confidence_score': deepthink_data.get('confidence_score', 0.0),
+                    'total_sources': deepthink_data.get('total_sources', 0),
+                    'timestamp': message['timestamp'],
+                    'relevance': self._calculate_search_relevance(query, message)
+                }
+                search_results.append(search_result)
+            
+            # Sort by relevance (highest first)
+            search_results.sort(key=lambda x: x['relevance'], reverse=True)
+            
+            logger.info(f"Found {len(search_results)} deep-think results for query: '{query}'")
+            return search_results
+            
+        except Exception as e:
+            logger.error(f"Error searching deep-think content: {e}")
+            return []
+    
+    def _calculate_search_relevance(self, query: str, message: dict) -> float:
+        """
+        Calculate relevance score for search results
+        
+        Args:
+            query: Search query
+            message: Message document
+            
+        Returns:
+            Relevance score (0.0 to 1.0)
+        """
+        try:
+            query_lower = query.lower()
+            score = 0.0
+            
+            # Check question relevance (40% weight)
+            deepthink_data = message.get('deepthink_data', {})
+            question = deepthink_data.get('question', '').lower()
+            if query_lower in question:
+                score += 0.4
+            elif any(word in question for word in query_lower.split()):
+                score += 0.2
+            
+            # Check answer relevance (40% weight)
+            answer = message.get('message', '').lower()
+            if query_lower in answer:
+                score += 0.4
+            elif any(word in answer for word in query_lower.split()):
+                score += 0.2
+            
+            # Boost score based on confidence (20% weight)
+            confidence = deepthink_data.get('confidence_score', 0.0)
+            score += confidence * 0.2
+            
+            return min(score, 1.0)  # Cap at 1.0
+            
+        except Exception as e:
+            logger.error(f"Error calculating search relevance: {e}")
+            return 0.0

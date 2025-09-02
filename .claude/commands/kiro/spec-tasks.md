@@ -1,62 +1,22 @@
 ---
 description: Generate implementation tasks for a specification
 allowed-tools: Bash, Read, Write, Edit, Update, MultiEdit
+argument-hint: <feature-name> [-y]
 ---
 
 # Implementation Tasks
 
 Generate detailed implementation tasks for feature: **$ARGUMENTS**
 
-## Approval Gate: Requirements & Design Check
+## Requirements & Design Approval Required
 
-**CRITICAL**: Tasks can only be generated after both requirements and design are approved.
+**CRITICAL**: Tasks can only be generated after both requirements and design are reviewed and approved.
 
-### Approval Status Check
+- Requirements document: @.kiro/specs/$ARGUMENTS/requirements.md
+- Design document: @.kiro/specs/$ARGUMENTS/design.md
 - Spec metadata: @.kiro/specs/$ARGUMENTS/spec.json
 
-**STOP HERE** if spec.json shows:
-```json
-"approvals": {
-  "requirements": {
-    "approved": false  // Must be true
-  },
-  "design": {
-    "approved": false  // Must be true
-  }
-}
-```
-
-**Required Actions for Full Approval**:
-
-### If Requirements Not Approved:
-1. **Review requirements.md** - Read through the generated requirements thoroughly
-2. **Edit if needed** - Make any necessary changes directly in the requirements.md file
-3. **Manual approval required** - Update spec.json to set `"requirements": {"approved": true}`
-
-### If Design Not Approved:
-1. **Review design.md** - Read through the generated design thoroughly
-2. **Edit if needed** - Make any necessary changes directly in the design.md file
-3. **Manual approval required** - Update spec.json to set `"design": {"approved": true}`
-4. **Reasoning**: Human review ensures technical design accuracy before task breakdown
-
-**Example full approval in spec.json**:
-```json
-{
-  "approvals": {
-    "requirements": {
-      "generated": true,
-      "approved": true  // ← Human reviewed and approved
-    },
-    "design": {
-      "generated": true,
-      "approved": true  // ← Human reviewed and approved
-    }
-  },
-  "phase": "design-approved"
-}
-```
-
-**Only proceed to task generation after both requirements and design are explicitly approved by human review.**
+**Note**: If this command was called with `-y` flag, both requirements and design are auto-approved (spec.json updated to set requirements.approved=true and design.approved=true). Otherwise, both phases must be approved first via their respective commands followed by `/kiro:spec-tasks $ARGUMENTS -y`.
 
 ## Context Analysis
 
@@ -70,134 +30,83 @@ Generate detailed implementation tasks for feature: **$ARGUMENTS**
 - Architecture patterns: @.kiro/steering/structure.md
 - Development practices: @.kiro/steering/tech.md
 - Product constraints: @.kiro/steering/product.md
+- Custom steering: Load "Always" mode and task-related "Conditional" mode files
 
-## Task: Generate Implementation Plan
+## Task: Generate Code-Generation Prompts
 
 **Prerequisites Verified**: Both requirements and design are approved and ready for task breakdown.
 
-Create comprehensive implementation plan in the language specified in spec.json:
+**CRITICAL**: Convert the feature design into a series of prompts for a code-generation LLM that will implement each step in a test-driven manner. Prioritize best practices, incremental progress, and early testing, ensuring no big jumps in complexity at any stage.
 
-### 1. Tasks Document Structure
+Create implementation plan in the language specified in spec.json:
+
+### 1. Code-Generation Tasks Structure
 Create tasks.md in the language specified in spec.json (check `@.kiro/specs/$ARGUMENTS/spec.json` for "language" field):
+
+**Note**: The example below is for format reference only. Actual content should be based on the specific requirements and design documents for your project.
 
 ```markdown
 # Implementation Plan
 
-- [ ] 1. Project Setup and Core Structure
-  - Create frontend (React/Vue/Next.js) and backend (FastAPI/Express) directory structure
-  - Define TypeScript types and core data model interfaces
-  - Set up development environment files (package.json, requirements.txt, docker-compose.yml)
-  - _Requirements: 1.1, 1.2_
+- [ ] 1. Set up project structure and core configuration
+  - Create Node.js project with TypeScript configuration
+  - Set up Express server with basic middleware
+  - Configure PostgreSQL and Redis connections
+  - Set up environment configuration and secrets management
+  - _Requirements: All requirements need foundational setup_
 
-- [ ] 2. Database and Model Layer Implementation
-- [ ] 2.1 Database Schema Design and Implementation
-  - Define schemas using [ORM/Database] (Prisma/SQLAlchemy/Mongoose)
-  - Create and run migration files
-  - Implement database connection utilities
-  - _Requirements: 2.1, 2.2_
+- [ ] 2. Implement authentication and user management
+- [ ] 2.1 Create user authentication system
+  - Implement User model with validation
+  - Create JWT token generation and validation utilities
+  - Build user registration and login endpoints
+  - Write unit tests for authentication logic
+  - _Requirements: 7.1, 7.2_
 
-- [ ] 2.2 Data Validation and Business Logic
-  - Implement model validation functions
-  - Implement and test business rules
-  - Standardize error handling across models
-  - _Requirements: 2.3_
+- [ ] 2.2 Implement email account connection system
+  - Create EmailAccount model with encrypted credential storage
+  - Implement OAuth 2.0 flow for Gmail and Outlook
+  - Build IMAP/SMTP credential validation
+  - Create email account management endpoints
+  - Write tests for account connection flows
+  - _Requirements: 5.1, 5.2, 5.4_
 
-- [ ] 3. API and Backend Services Implementation
-- [ ] 3.1 Authentication and Authorization System
-  - Implement JWT/session authentication with [Auth Library]
-  - Create user registration and login endpoints
-  - Implement access control middleware and route protection
-  - _Requirements: 3.1, 3.2_
-
-- [ ] 3.2 Core API Endpoints Implementation
-  - Implement CRUD operations for main entities
-  - Add input validation and sanitization
-  - Create API documentation with OpenAPI/Swagger
-  - _Requirements: 3.3, 3.4_
-
-- [ ] 4. Frontend Component Implementation
-- [ ] 4.1 Basic UI Component Creation
-  - Select and configure component library ([Chakra UI/Material-UI/Tailwind])
-  - Implement common components (Button, Input, Modal, Table)
-  - Set up responsive design system and theme
-  - _Requirements: 4.1, 4.2_
-
-- [ ] 4.2 Feature-Specific Components
-  - Implement main feature components based on requirements
-  - Add form handling with validation ([Formik/React Hook Form])
-  - Implement state management ([Redux/Zustand/Context])
-  - _Requirements: 4.3, 4.4_
-
-- [ ] 5. Integration and Testing
-- [ ] 5.1 Test Suite Implementation
-  - Create unit tests for backend services (Jest/pytest)
-  - Implement API integration tests
-  - Set up frontend component tests ([Testing Library])
-  - _Requirements: All requirements test coverage_
-
-- [ ] 5.2 End-to-End Testing and Deployment
-  - Implement E2E tests ([Playwright/Cypress])
-  - Set up CI/CD pipeline configuration
-  - Configure production deployment and monitoring
-  - _Requirements: 5.1, 5.2_
+... (Continue with additional phases: API layer, frontend, integration testing, etc.)
 ```
 
-**Key Format Rules**:
-- Hierarchical numbering: Major phases (1, 2, 3) and sub-tasks (1.1, 1.2)
-- Each task contains 2-4 concrete, actionable items
-- Specify technologies in brackets: [React], [FastAPI], [Prisma]
-- End with requirement mapping: _Requirements: X.X, Y.Y_
-- Tasks should be completable in 2-4 hours each
-- Include testing tasks for each major component
+**Task Structure Requirements:**
+- Use section headers to group related functionality (## [Functional Area])
+- Use flat numbering within sections: Major tasks (1, 2, 3) and sub-tasks (1.1, 1.2)
+- Avoid "Phase X:" prefixes, use functional section names instead
+- Each task should have 3-5 sub-items maximum
+- Keep tasks completable in 1-2 hours
+- Order by technical dependencies: Each task should build on outputs from previous tasks
+- Each task explains how it connects to subsequent tasks
+- **MUST end with exact format**: _Requirements: X.X, Y.Y_ or _Requirements: [description]_ (underscores mandatory)
+- Rely on design document for implementation details
 
-### 2. Task Quality Guidelines
-- **Hierarchical Structure**: Group related tasks into phases
-- **Discrete Tasks**: Each task should be completable in 2-4 hours
-- **Clear Acceptance Criteria**: Define what "done" means
-- **Requirements Mapping**: Link tasks to specific requirements
-- **Dependency Management**: Order tasks by dependencies
-- **Testable Outcomes**: Each task should have verifiable results
+### 2. Focus on Coding Activities Only
+**INCLUDE:** Any task that involves writing, modifying, or testing code
+**EXCLUDE:** User testing, deployment, metrics gathering, CI/CD setup, documentation creation
 
-### 3. Task Categories
-Include tasks for:
-- **Data Models**: Database schema and model creation
-- **API Endpoints**: Backend service implementation
-- **UI Components**: Frontend component development
-- **Integration**: Service integration and workflow
-- **Testing**: Unit, integration, and E2E tests
-- **Documentation**: Code documentation and user guides
+### 3. Granular Requirements Mapping
+**MANDATORY FORMAT**: Each task must end with _Requirements: [mapping]_
+- **Primary format**: _Requirements: 2.1, 3.3, 1.2_ for specific EARS requirements (most common)
+- **Generalized mapping**: _Requirements: All requirements need foundational setup_ for cross-cutting tasks
+- **End-to-end tasks**: _Requirements: All requirements need E2E validation_ for comprehensive testing
+- Must use exact format with underscores
+- Ensure every EARS requirement is covered by implementation tasks
 
-### 4. Requirements Mapping
-For each task, reference the specific requirements from requirements.md:
-- Map to user stories (要件1, 要件2, etc.)
-- Include acceptance criteria references
-- Ensure full requirements coverage
 
-### 5. Progress Tracking
-Include progress tracking section:
-```markdown
-## 進捗状況
-- Created: [timestamp]
-- Status: Ready for implementation
-- Total tasks: [count]
-- Completed: 0
-- Remaining: [count]
-```
-
-### 6. Document Generation Only
+### 4. Document Generation Only
 Generate the tasks document content ONLY. Do not include any review or approval instructions in the actual document file.
 
-### 7. Update Metadata
+### 5. Update Metadata
 
 Update spec.json with:
 ```json
 {
   "phase": "tasks-generated",
-  "progress": {
-    "requirements": 100,
-    "design": 100, 
-    "tasks": 100
-  },
   "approvals": {
     "requirements": {
       "generated": true,
@@ -221,57 +130,70 @@ Update the tracking metadata to reflect task generation completion.
 
 ---
 
-## REVIEW AND APPROVAL PROCESS (Not included in document)
+## INTERACTIVE APPROVAL IMPLEMENTED (Not included in document)
 
 The following is for Claude Code conversation only - NOT for the generated document:
 
-### Human Review Required
-After generating tasks.md, inform the user:
+## Next Phase: Implementation Ready
 
-**NEXT STEP**: Human review required before starting implementation.
+After generating tasks.md, review the implementation tasks:
 
-### Review Checklist:
+**If tasks look good:**
+Begin implementation following the generated task sequence
+
+**If tasks need modification:**
+Request changes and re-run this command after modifications
+
+Tasks represent the final planning phase - implementation can begin once tasks are approved.
+
+**Final approval process for implementation**:
+```
+📋 Tasks review completed. Ready for implementation.
+📄 Generated: .kiro/specs/feature-name/tasks.md
+✅ All phases approved. Implementation can now begin.
+```
+
+### Review Checklist (for user reference):
 - [ ] Tasks are properly sized (2-4 hours each)
 - [ ] All requirements are covered by tasks
 - [ ] Task dependencies are correct
 - [ ] Technology choices match the design
 - [ ] Testing tasks are included
 
-### To Approve:
-After reviewing, update `.kiro/specs/$ARGUMENTS/spec.json`:
-```json
-{
-  "approvals": {
-    "requirements": {
-      "generated": true,
-      "approved": true
-    },
-    "design": {
-      "generated": true,
-      "approved": true
-    },
-    "tasks": {
-      "generated": true,
-      "approved": true
-    }
-  },
-  "phase": "ready-for-implementation",
-  "ready_for_implementation": true
-}
-```
-
-**Only after approval can you start implementation.**
-
 ## Instructions
 
+### Core Task Generation
 1. **Check spec.json for language** - Use the language specified in the metadata
-2. **Analyze requirements and design** to understand full scope
-3. **Create hierarchical task structure** with clear phases
-4. **Define discrete, actionable tasks** with acceptance criteria
-5. **Map all tasks to requirements** to ensure coverage
-6. **Order tasks by dependencies** for logical implementation flow
-7. **Include testing and documentation** tasks
-8. **Update tracking metadata** upon completion
+2. **Convert design into code-generation prompts** - Each task must be a specific coding instruction
+3. **Assume context availability** - All context documents (requirements.md, design.md) will be available during implementation
+4. **Specify exact files and components** - Define what code to write/modify in which files
+5. **Build incrementally** - Each task uses outputs from previous tasks, no orphaned code
+6. **Map to requirements** - End each task with _Requirements: X.X, Y.Y_ or _Requirements: [description]_ format
 
-Generate tasks that provide clear roadmap for implementation.
-ultrathink
+### Implementation Strategy
+7. **Prioritize early validation** - Sequence steps to validate core functionality early through code
+8. **Apply test-driven approach** - Integrate testing into each development task
+9. **Order by technical dependencies** - Ensure each task can execute using outputs from previous tasks
+10. **Size appropriately** - Each task should be completable in 1-3 hours
+
+### Strict Coding-Only Focus
+**INCLUDE only tasks involving:**
+- Writing, modifying, or testing code
+- Creating automated tests
+- Implementing specific functions or components
+
+**EXCLUDE all non-coding activities:**
+- User acceptance testing or feedback gathering
+- Deployment to production/staging environments
+- Performance metrics gathering or analysis
+- Running the application manually for end-to-end testing
+- User training or documentation creation
+- Business process or organizational changes
+- Marketing or communication activities
+- Any task that cannot be completed through code modification
+
+### Completion
+11. **Update tracking metadata** upon completion - Set phase to "tasks-generated"
+
+Generate step-by-step implementation tasks executable by a coding agent.
+think deeply

@@ -9,6 +9,7 @@ from meilisearch_python_sdk import AsyncClient
 from app.handler.search_handler import SearchHandler
 from app.handler.health_handler import HealthHandler
 from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler, ChatStreamHandler
+from app.handler.deepthink_handler import DeepThinkChatHistoryHandler, DeepThinkAnalyticsHandler, DeepThinkSearchHandler, DeepThinkResultHandler, ChatDeepThinkMessagesHandler
 from app.handler.main_handler import MainHandler, NotFoundHandler, FaviconHandler
 from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, GitHubOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler, SessionCheckHandler, EmailVerificationHandler, ForgotPasswordHandler, ResetPasswordHandler
 from app.handler.deep_search_handler import DeepSearchHandler, DeepSearchStreamHandler, DeepSearchWebSocketHandler
@@ -96,7 +97,7 @@ output_queue = None
 deepseek_service = None
 
 class Application(tornado.web.Application):
-    def __init__(self, input_queue=None, output_queue=None):
+    def __init__(self, input_queue=None, output_queue=None, deepseek_service=None):
         handlers = [
             (r"/search", SearchHandler),
             (r"/health", HealthHandler),
@@ -106,6 +107,11 @@ class Application(tornado.web.Application):
             (r"/chat/user", UserChatsHandler),
             (r"/chat/share/([^/]+)", ShareMessageHandler),
             (r"/chat/shared", SharedMessagesHandler),
+            (r"/chat/deepthink/history/([^/]+)", DeepThinkChatHistoryHandler),
+            (r"/chat/deepthink/messages/([^/]+)", ChatDeepThinkMessagesHandler),
+            (r"/deepthink/analytics", DeepThinkAnalyticsHandler),
+            (r"/deepthink/search", DeepThinkSearchHandler),
+            (r"/deepthink/result/([^/]+)", DeepThinkResultHandler),
             (r"/deep-search", DeepSearchHandler),
             (r"/deep-search/stream", DeepSearchStreamHandler),
             (r"/deep-search/ws", DeepSearchWebSocketHandler),
@@ -176,6 +182,9 @@ class Application(tornado.web.Application):
         self.input_queue = input_queue
         self.output_queue = output_queue
         
+        # Store deepseek service reference
+        self.deepseek_service = deepseek_service
+        
         # Initialize stream queues for streaming responses
         self.stream_queues = {}
 
@@ -199,7 +208,7 @@ def make_app():
 
     # Create and return the Tornado application
     # MongoDB service will be initialized within the Application class
-    return Application(input_queue, output_queue)
+    return Application(input_queue, output_queue, deepseek_service)
 
 # This is the application callable that Gunicorn expects
 app = make_app()

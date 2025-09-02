@@ -1,58 +1,41 @@
 ---
 description: Create technical design for a specification
-allowed-tools: Bash, Read, Write, Edit, MultiEdit, Update, WebSearch, WebFetch
+allowed-tools: Bash, Glob, Grep, LS, Read, Write, Edit, MultiEdit, Update, WebSearch, WebFetch
+argument-hint: <feature-name> [-y]
 ---
 
 # Technical Design
 
 Create comprehensive technical design for feature: **$ARGUMENTS**
 
-## Approval Gate: Requirements Check
+## Requirements Approval Required
 
-**CRITICAL**: Design can only be generated after requirements are approved.
+**CRITICAL**: Design can only be generated after requirements are reviewed and approved.
 
-### Approval Status Check
+- Requirements document: @.kiro/specs/$ARGUMENTS/requirements.md
 - Spec metadata: @.kiro/specs/$ARGUMENTS/spec.json
 
-**STOP HERE** if spec.json shows:
-```json
-"approvals": {
-  "requirements": {
-    "approved": false
-  }
-}
-```
-
-**Required Actions for Requirements Approval**:
-1. **Review requirements.md** - Read through the generated requirements thoroughly
-2. **Edit if needed** - Make any necessary changes directly in the requirements.md file
-3. **Manual approval required** - Update spec.json manually to set `"requirements": {"approved": true}`
-4. **Reasoning**: Human review ensures requirements accuracy before design phase
-
-**Example approval in spec.json**:
-```json
-{
-  "approvals": {
-    "requirements": {
-      "generated": true,
-      "approved": true  // ← Set this to true after human review
-    }
-  },
-  "phase": "requirements-approved"
-}
-```
-
-**Only proceed to design generation after requirements are explicitly approved by human review.**
+**Note**: If this command was called with `-y` flag, requirements are auto-approved (spec.json updated to set requirements.approved=true). Otherwise, requirements must be approved first via `/kiro:spec-requirements $ARGUMENTS` followed by `/kiro:spec-design $ARGUMENTS -y`.
 
 ## Context Analysis
+
+### Requirements Foundation
+**CRITICAL**: Design must be built upon approved requirements document.
+
+- **Requirements document**: @.kiro/specs/$ARGUMENTS/requirements.md
+- **EARS format requirements**: Each requirement with acceptance criteria
+- **User stories mapping**: Design components must address specific user stories
+- **Constraints and acceptance criteria**: Must be reflected in technical decisions
+
+**Verification Required**: Ensure requirements.md exists and is approved before proceeding.
 
 ### Steering Context
 - Current architecture: @.kiro/steering/structure.md
 - Technology stack: @.kiro/steering/tech.md
 - Product constraints: @.kiro/steering/product.md
+- Custom steering: Load "Always" mode and design-pattern matching "Conditional" mode files
 
-### Requirements Context (APPROVED)
-- Feature requirements: @.kiro/specs/$ARGUMENTS/requirements.md
+### Current Spec Context
 - Current design: @.kiro/specs/$ARGUMENTS/design.md
 - Spec metadata: @.kiro/specs/$ARGUMENTS/spec.json
 
@@ -60,7 +43,31 @@ Create comprehensive technical design for feature: **$ARGUMENTS**
 
 **Prerequisites Verified**: Requirements are approved and ready for design phase.
 
-Generate comprehensive design document in the language specified in spec.json:
+### Research & Investigation Process
+
+**MANDATORY**: Conduct research and investigation during the design process:
+
+1. **Technology Research**
+   - Research current best practices for the technology stack
+   - Investigate security considerations and latest standards
+   - Review performance benchmarks and scaling approaches
+   - Examine integration patterns with existing architecture
+
+2. **Context Building**
+   - Build up research context in the conversation thread
+   - Document key findings that inform design decisions
+   - Cite sources and include relevant links for reference
+   - Summarize insights that impact architectural choices
+
+3. **Requirements Analysis**
+   - Map each design component to specific EARS requirements
+   - Ensure all user stories are addressed in the technical design
+   - Validate that acceptance criteria can be met by the proposed solution
+   - Identify any gaps between requirements and technical feasibility
+
+### Design Document Generation
+
+Generate comprehensive design document in the language specified in spec.json, incorporating research findings:
 
 ### 1. Design Document Structure
 Create design.md in the language specified in spec.json (check `@.kiro/specs/$ARGUMENTS/spec.json` for "language" field):
@@ -69,10 +76,22 @@ Create design.md in the language specified in spec.json (check `@.kiro/specs/$AR
 # Technical Design
 
 ## Overview
-[Technical overview of the implementation approach]
+[Technical overview of the implementation approach, referencing key requirements from requirements.md]
+
+## Requirements Mapping
+
+### Design Component Traceability
+Each design component addresses specific requirements:
+- **[Component 1]** → X.X: [EARS requirement reference]
+- **[Component 2]** → Y.Y: [EARS requirement reference]
+- **[Integration Layer]** → Z.Z: [EARS requirement reference]
+
+### User Story Coverage
+[Ensure all user stories from requirements.md are addressed]
+- User Story 1: [How design addresses this story]
+- User Story 2: [Technical approach for this story]
 
 ## Architecture
-[Architecture diagram using mermaid]
 
 ```mermaid
 graph TB
@@ -82,84 +101,207 @@ graph TB
     D --> E[Database]
 ```
 
-## Technology Stack
+### Technology Stack
+[Based on research findings and requirements analysis]
+
 - **Frontend**: [React/Vue/Next.js] + [TypeScript]
-- **Backend**: [FastAPI/Express/Django] + [Language]
+- **Backend**: [FastAPI/Express/Django] + [Language] 
 - **Database**: [PostgreSQL/MySQL/MongoDB]
 - **Authentication**: [JWT/OAuth/Auth0]
 - **Testing**: [Jest/pytest] + [Testing Library/Playwright]
-- **Deployment**: [Docker/Vercel/AWS]
+- **Deployment**: [Docker/Vercel/AWS/GCP]
 
-## Components and Interfaces
-[Detailed component design with clear interfaces]
+### Architecture Decision Rationale
+[Document reasoning behind key technology choices based on research]
 
-### API Endpoints
-```
-GET /api/[resource]
-POST /api/[resource]
-PUT /api/[resource]/:id
-DELETE /api/[resource]/:id
-```
+- **Why [Frontend Framework]**: [Research-based justification]
+- **Why [Backend Technology]**: [Performance, scalability, team expertise considerations]
+- **Why [Database Choice]**: [Data model requirements, consistency needs, scaling patterns]
+- **Why [Authentication Method]**: [Security requirements, integration capabilities, user experience]
+
+### Screen Transitions (if applicable)
+[Use a diagram for major navigation and state transitions]
 
 ### Data Flow
 [Description of how data flows through the system]
 
+#### Primary User Flows
+Include sequence diagrams for the top 1-3 user flows:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant DB
+    
+    User->>Frontend: action
+    Frontend->>API: request
+    API->>DB: query
+    DB-->>API: result
+    API-->>Frontend: response
+    Frontend-->>User: update UI
+```
+
+## Components and Interfaces
+Generate a comprehensive component breakdown.
+
+### Backend Services & Method Signatures
+For each service identified in requirements, list public methods with concise doc-strings. Example (Python):
+```python
+class InvoiceService:
+    def create_invoice(self, data: InvoiceData) -> Invoice:  # create & persist
+    def send_invoice(self, invoice_id: str) -> None          # email/send
+```
+
+### Frontend Components
+Provide a table: Component name │ Responsibility │ Props/state summary.
+
+### API Endpoints
+Provide a detailed API endpoint table:
+
+| Method | Route | Purpose | Auth | Status Codes |
+|--------|-------|---------|------|--------------|
+| GET    | /api/[resource] | List resources | Required | 200, 401, 500 |
+| POST   | /api/[resource] | Create resource | Required | 201, 400, 401, 500 |
+| PUT    | /api/[resource]/:id | Update resource | Required | 200, 400, 401, 404, 500 |
+| DELETE | /api/[resource]/:id | Delete resource | Required | 204, 401, 404, 500 |
+
 ## Data Models
-[Data structures and database schemas]
+
+### Domain Entities
+1. **[Entity1]**: [Brief description]
+2. **[Entity2]**: [Brief description]
+3. **[Entity3]**: [Brief description]
+
+### Entity Relationships
+```mermaid
+erDiagram
+    USER ||--o{ PROJECT : "owns"
+    PROJECT ||--|{ TASK : "contains"
+    USER ||--o{ TASK : "creates"
+```
+
+### Data Model Definitions
+Provide language-specific models (TypeScript interfaces and/or Python dataclasses):
 
 ```typescript
 interface [ModelName] {
   id: string;
-  // Add relevant fields
+  // Add relevant fields based on requirements
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
+
+```python
+@dataclass
+class [ModelName]:
+    id: str
+    # Add relevant fields based on requirements
+    created_at: datetime
+    updated_at: datetime
+```
+
+### Database Schema
+[SQL schema or NoSQL document structure]
+
+If using a relational (SQL) database, include a minimal schema snippet as a starting point:
+
+```sql
+CREATE TABLE users (
+  id VARCHAR(36) PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL
+);
+
+CREATE INDEX idx_users_created_at ON users (created_at);
+```
+
+- Add foreign keys and additional constraints/indexes as needed.
+
+### Migration Strategy (if applicable)
+- Migration approach for schema changes
+- Backward compatibility considerations
+- Data transformation requirements
+- Indexing strategy for performance
 
 ## Error Handling
 [Comprehensive error handling strategy]
 
-## Security Considerations
-[Authentication, authorization, data validation]
+## Security Considerations (if applicable)
+[Security considerations briefly]
+- Implement JWT-based authentication with role-based authorization and input validation
+- Apply OWASP security practices including rate limiting, CORS, and data encryption
 
-## Performance & Scalability
-[Caching, optimization, scaling strategy]
+
+## Performance & Scalability (if applicable)
+
+### Performance Targets
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Response Time (p95) | < 200ms | API endpoints |
+| Response Time (p99) | < 500ms | API endpoints |
+| Throughput | > 1000 req/sec | Load testing |
+| Database Query (p99) | < 50ms | Query monitoring |
+| Concurrent Users | > 10,000 | System capacity |
+
+### Caching Strategy
+- **Browser Cache**: Static assets, API responses
+- **CDN**: Media files, static content
+- **Application Cache**: Redis/Memcached for session data
+- **Database Cache**: Query result caching
+
+### Scalability Approach
+- Horizontal scaling for application servers
+- Read replicas for database
+- Background job queue for async processing
+- Auto-scaling based on load metrics
+
 
 ## Testing Strategy
-[Unit, integration, and E2E testing approach]
+
+- Purpose/Scope: [Quality risk reduction / regression prevention / objective acceptance]
+- Use: Keep only applicable rows; remove others (do not mark N/A)
+
+### Risk Matrix
+| Area | Risk | Must | Optional | Ref |
+|---|---|---|---|---|
+| AuthN/Z | [H/M/L] | Unit, Contract, E2E | Security | [X.X] |
+| External API | [H/M/L] | Contract, Integration | Resilience | [X.X] |
+| Data Integrity | [H/M/L] | Unit, Property | Integration | [X.X] |
+| Critical UX Flows | [H/M/L] | E2E (≤3) | A11y | [X.X] |
+| Performance | [H/M/L] | Perf smoke | Load/Stress | [SLO/Perf table] |
+
+### Minimal by Layer
+- Unit: boundary/exception cases of core business logic
+- Contract (API): provider/consumer contracts fixed
+- Integration: DB/external dependency integration
+- E2E (≤3): main user flows, happy + edge
+
+### CI Gates
+| Stage | Run | Gate | SLA |
+|---|---|---|---|
+| PR | Unit + Contract | Fail = block | ≤Xm |
+| Staging | Integration + E2E | Fail = block | ≤Ym |
+| Nightly (if) | Performance/Resilience | Regression → issue | - |
+
+### Exit
+- Sev1/Sev2 = 0
+- All gates passed
+- Non-functional targets met (exceptions require recorded approval)
+
 ```
 
-### 2. Design Quality Guidelines
-- **Architecture Alignment**: Follow existing architectural patterns
-- **Technology Consistency**: Use established technology stack
-- **Interface Design**: Define clear component interfaces
-- **Data Modeling**: Design appropriate data structures
-- **Error Handling**: Plan comprehensive error scenarios
-- **Testing Strategy**: Include unit, integration, and E2E testing
+### 2. Document Generation
+Generate the design document content ONLY. Do not include any review or approval instructions in the actual document file.
 
-### 3. Integration Considerations
-Based on steering and requirements:
-- How components integrate with existing architecture
-- Database schema changes required
-- API endpoint design
-- Performance considerations
-- Security requirements
-
-### 4. Mermaid Diagrams
-Include relevant diagrams:
-- System architecture
-- Component interactions
-- Data flow diagrams
-- Sequence diagrams for key workflows
-
-### 5. Update Metadata
+### 3. Update Metadata
 Update spec.json with:
 ```json
 {
   "phase": "design-generated",
-  "progress": {
-    "requirements": 100,
-    "design": 100,
-    "tasks": 0
-  },
   "approvals": {
     "requirements": {
       "generated": true,
@@ -174,56 +316,55 @@ Update spec.json with:
 }
 ```
 
-### 6. Document Generation Only
-Generate the design document content ONLY. Do not include any review or approval instructions in the actual document file.
-
 ---
 
-## REVIEW AND APPROVAL PROCESS (Not included in document)
+## INTERACTIVE APPROVAL IMPLEMENTED (Not included in document)
 
 The following is for Claude Code conversation only - NOT for the generated document:
 
-### Human Review Required
-After generating design.md, inform the user:
+### Interactive Approval Process
+## Next Phase: Interactive Approval
 
-**NEXT STEP**: Human review required before proceeding to tasks phase.
+After generating design.md, review the design and choose:
 
-### Review Checklist:
+**If design looks good:**
+Run `/kiro:spec-tasks $ARGUMENTS -y` to proceed to tasks phase
+
+**If design needs modification:**
+Request changes, then re-run this command after modifications
+
+The `-y` flag auto-approves design and generates tasks directly, streamlining the workflow while maintaining review enforcement.
+
+### Review Checklist (for user reference):
 - [ ] Technical design is comprehensive and clear
 - [ ] Architecture aligns with existing system
 - [ ] Technology choices are appropriate
 - [ ] Components and interfaces are well-defined
-- [ ] Security and performance considerations are addressed
-
-### To Approve:
-After reviewing, update `.kiro/specs/$ARGUMENTS/spec.json`:
-```json
-{
-  "approvals": {
-    "requirements": {
-      "generated": true,
-      "approved": true
-    },
-    "design": {
-      "generated": true,
-      "approved": true
-    }
-  },
-  "phase": "design-approved"
-}
-```
-
-**Only after approval can you proceed to `/spec-tasks $ARGUMENTS`**
+- [ ] Data models are well-defined
+- [ ] Error handling is well-defined
+- [ ] Testing strategy is well-defined
 
 ## Instructions
 
-1. **Check spec.json for language** - Use the language specified in the metadata
-2. **Analyze requirements thoroughly** to understand scope
-3. **Follow existing architecture patterns** from steering
-4. **Create detailed component design** with clear interfaces
-5. **Include comprehensive diagrams** using mermaid
-6. **Plan error handling and testing** strategies
-7. **Update tracking metadata** upon completion
+1. **Verify requirements foundation** - Ensure requirements.md exists and is approved
+2. **Check spec.json for language** - Use the language specified in the metadata
+3. **Conduct comprehensive research**:
+   - Research technology best practices and latest standards
+   - Investigate security, performance, and integration considerations
+   - Build context through research findings in conversation thread
+   - Document sources and key insights that inform design decisions
+4. **Analyze requirements thoroughly**:
+   - Map each design component to specific EARS requirements
+   - Ensure all user stories are addressed in technical design
+   - Validate acceptance criteria can be met by proposed solution
+5. **Follow existing architecture patterns** from steering context
+6. **Structure the document in logical order**:
+   - Overview → Research & Context → Requirements Mapping → Architecture (Screen Transitions if applicable, Data Flow) → Components → Data Models → Error Handling → Security → Performance → Testing
+7. **Create detailed component design** with clear interfaces and API specifications
+8. **Include comprehensive diagrams** using mermaid for architecture, screen transitions, data flow, and ER diagrams
+9. **Document design rationale** - Explain reasoning behind key technical decisions
+10. **Define concrete performance targets** and testing strategies
+11. **Update tracking metadata** upon completion
 
-Generate design that provides clear blueprint for implementation phase.
-ultrathink
+Generate design that provides clear blueprint for implementation phase with proper consideration for scalability, security, and maintainability, all grounded in thorough research and explicit requirements traceability.
+think deeply

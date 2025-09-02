@@ -251,7 +251,7 @@
             background: #333;
             border-color: #00bcd4;
         }
-        .search-btn, .deep-btn, .qwen-btn, .deepseek-btn {
+        .search-btn, .deep-btn, .qwen-btn, .deepseek-btn, .deepthink-btn {
             padding: 6px 14px;
             border-radius: 16px;
             border: 1px solid #fff;
@@ -265,6 +265,18 @@
         .search-btn {
             border-color: #00bcd4;
         }
+        .deepthink-btn {
+            border-color: #9c27b0;
+            background: linear-gradient(135deg, #673ab7, #9c27b0);
+        }
+        .deepthink-btn:hover {
+            background: linear-gradient(135deg, #7e57c2, #ba68c8);
+            border-color: #ba68c8;
+        }
+        .deepthink-btn.selected {
+            background: linear-gradient(135deg, #9c27b0, #e91e63);
+            border-color: #e91e63;
+        }
         .search-btn:hover, .deep-btn:hover, .qwen-btn:hover, .deepseek-btn:hover {
             background: #333;
             border-color: #00bcd4;
@@ -274,13 +286,13 @@
             color: #fff;
             border-color: #00bcd4;
         }
-        .search-btn.disabled, .deep-btn.disabled, .qwen-btn.disabled, .deepseek-btn.disabled {
+        .search-btn.disabled, .deep-btn.disabled, .qwen-btn.disabled, .deepseek-btn.disabled, .deepthink-btn.disabled {
             opacity: 0.5;
             cursor: not-allowed;
             background: #232526;
             border-color: #666;
         }
-        .search-btn.disabled:hover, .deep-btn.disabled:hover, .qwen-btn.disabled:hover, .deepseek-btn.disabled:hover {
+        .search-btn.disabled:hover, .deep-btn.disabled:hover, .qwen-btn.disabled:hover, .deepseek-btn.disabled:hover, .deepthink-btn.disabled:hover {
             background: #232526;
             border-color: #666;
         }
@@ -885,6 +897,7 @@
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
                             <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
                             <button type="button" class="deepseek-btn selectable-btn" data-mode="deepseek">DeepSeek</button>
+                            <button type="button" class="deepthink-btn selectable-btn" data-mode="deepthink">Deep Think</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn">Execute</button>
@@ -908,6 +921,7 @@
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
                             <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
                             <button type="button" class="deepseek-btn selectable-btn" data-mode="deepseek">DeepSeek</button>
+                            <button type="button" class="deepthink-btn selectable-btn" data-mode="deepthink">Deep Think</button>
                         </div>
                         <div class="right-button">
                             <button type="button" class="execute-btn" id="chat-execute-btn">Execute</button>

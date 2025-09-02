@@ -9,8 +9,10 @@ import os
 from datetime import datetime
 from bson import ObjectId, json_util
 
-# Import the enhanced research service
+# Import the enhanced research service and new deep-think orchestrator
 from app.service.enhanced_deepseek_research_service import EnhancedDeepSeekResearchService
+from app.service.deepthink_orchestrator import DeepThinkOrchestrator
+from app.service.deepthink_models import DeepThinkRequest
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -517,6 +519,12 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                 await self._handle_deepseek_research(message, chat_id, user_id, message_id, stream_queue)
                 return
             
+            # Check if this is a deep-think request (new orchestrator)
+            if search_mode == "deepthink":
+                logger.info(f"Deep-think mode detected for chat_id: {chat_id}")
+                await self._handle_deepthink_research(message, chat_id, user_id, message_id, stream_queue)
+                return
+            
             # Add the message to the input queue for processing by regular DeepSeek with streaming flag
             try:
                 logger.info(f"Adding streaming message to input queue for chat_id: {chat_id}, message_id: {message_id}, mode: {search_mode}")
@@ -725,7 +733,7 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                     await asyncio.sleep(0.05)  # Small delay for realistic streaming
             
             # Send final completion
-            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'research_data': research_results})}\n\n")
+            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'research_data': research_results}, cls=MongoJSONEncoder)}\n\n")
             await self.flush()
             
             # Store the complete AI response in MongoDB
@@ -756,6 +764,146 @@ class ChatStreamHandler(tornado.web.RequestHandler):
             
             # Send error to client
             self.write(f"data: {json.dumps({'type': 'error', 'content': f'Research error: {str(e)}'})}\n\n")
+            await self.flush()
+    
+    async def _handle_deepthink_research(self, message: str, chat_id: str, user_id: str, message_id: str, stream_queue):
+        """Handle deep-think research mode with new orchestrator and streaming progress"""
+        try:
+            # Get Serper API key from environment
+            serper_api_key = os.environ.get('SERPER_API_KEY')
+            if not serper_api_key:
+                error_msg = "Serper API key not configured. Please set SERPER_API_KEY environment variable."
+                logger.error(error_msg)
+                self.write(f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n")
+                await self.flush()
+                return
+            
+            # Initialize the deep-think orchestrator
+            orchestrator = DeepThinkOrchestrator(
+                deepseek_service=self.application.deepseek_service,
+                mongodb_service=self.application.mongodb,
+                serper_api_key=serper_api_key,
+                timeout=int(os.environ.get('DEEPSEEK_RESEARCH_TIMEOUT', 600)),
+                max_concurrent_searches=int(os.environ.get('MAX_CONCURRENT_RESEARCH', 3)),
+                cache_expiry_days=int(os.environ.get('CACHE_EXPIRY_DAYS', 30))
+            )
+            
+            # Create deep-think request
+            request = DeepThinkRequest(
+                request_id=str(uuid.uuid4()),
+                question=message,
+                chat_id=chat_id,
+                user_id=user_id,
+                timestamp=datetime.utcnow(),
+                timeout_seconds=int(os.environ.get('DEEPSEEK_RESEARCH_TIMEOUT', 600))
+            )
+            
+            # Stream the deep-think process
+            try:
+                async for progress_update in orchestrator.stream_deep_think(request):
+                    if progress_update.step == orchestrator.total_steps:
+                        # Final result
+                        result = progress_update.details.get('result')
+                        if result:
+                            # Format the result for chat interface
+                            # Build markdown response directly
+                            confidence = result.get('confidence_score', 0.0)
+                            confidence_emoji = "🟢" if confidence >= 0.8 else "🟡" if confidence >= 0.6 else "🔴"
+                            
+                            formatted_parts = [
+                                f"**Deep Think Research Result** {confidence_emoji}",
+                                "",
+                                "## 📋 Summary",
+                                result.get('summary_answer', result.get('summary', 'No summary available')),
+                                "",
+                                "<details>",
+                                "<summary><strong>📚 Comprehensive Analysis (Click to expand)</strong></summary>",
+                                "",
+                                result.get('comprehensive_answer', 'No comprehensive answer available'),
+                                "</details>",
+                                ""
+                            ]
+                            
+                            # Add metadata if available
+                            if 'total_sources' in result:
+                                formatted_parts.append(f"*Sources analyzed: {result['total_sources']}*")
+                            if 'processing_time' in result:
+                                formatted_parts.append(f"*Processing time: {result['processing_time']:.1f}s*")
+                            
+                            formatted_response = "\n".join(formatted_parts)
+                            
+                            # Stream the formatted response word by word
+                            words = formatted_response.split()
+                            accumulated_content = ""
+                            
+                            for i, word in enumerate(words):
+                                accumulated_content += word + " "
+                                
+                                # Send chunks of 3-5 words at a time
+                                if i % 4 == 0 and i > 0:
+                                    chunk_content = " ".join(words[max(0, i-3):i+1])
+                                    self.write(f"data: {json.dumps({'type': 'chunk', 'content': chunk_content + ' ', 'chat_id': chat_id, 'message_id': message_id})}\n\n")
+                                    await self.flush()
+                                    await asyncio.sleep(0.03)  # Small delay for realistic streaming
+                            
+                            # Send final completion
+                            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'deepthink_result': result}, cls=MongoJSONEncoder)}\n\n")
+                            await self.flush()
+                            
+                            # Store the complete AI response in MongoDB
+                            response_doc = {
+                                'message_id': str(uuid.uuid4()),
+                                'chat_id': chat_id,
+                                'user_id': user_id,
+                                'message': accumulated_content.strip(),
+                                'timestamp': datetime.utcnow(),
+                                'type': 'assistant',
+                                'search_results': result.get('scraped_content', []),
+                                'deepthink_data': result,  # Store full deep-think data
+                                'shared': False
+                            }
+                            
+                            try:
+                                await self.application.mongodb.create_message(response_doc)
+                                logger.info(f"Deep-think response stored successfully for chat_id: {chat_id}")
+                            except Exception as e:
+                                logger.error(f"Error storing deep-think response: {e}")
+                        else:
+                            # No result in final update - handle error
+                            error_detail = progress_update.details.get('error', 'Unknown error')
+                            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Deep-think failed: {error_detail}'})}\n\n")
+                            await self.flush()
+                    else:
+                        # Progress update
+                        progress_data = {
+                            'type': 'deepthink_progress',
+                            'step': progress_update.step,
+                            'total_steps': progress_update.total_steps,
+                            'description': progress_update.description,
+                            'progress': progress_update.progress_percent,
+                            'details': progress_update.details
+                        }
+                        self.write(f"data: {json.dumps(progress_data, cls=MongoJSONEncoder)}\n\n")
+                        await self.flush()
+                        
+            except asyncio.TimeoutError:
+                timeout_error = f"Deep-think research timed out after {request.timeout_seconds} seconds"
+                logger.error(timeout_error)
+                self.write(f"data: {json.dumps({'type': 'error', 'content': timeout_error})}\n\n")
+                await self.flush()
+            except Exception as e:
+                error_msg = f"Deep-think processing error: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                self.write(f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n")
+                await self.flush()
+                
+        except Exception as e:
+            logger.error(f"Error in deep-think research: {e}")
+            logger.error(traceback.format_exc())
+            
+            # Send error to client
+            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Deep-think error: {str(e)}'})}\n\n")
             await self.flush()
 
 class SharedMessagesHandler(tornado.web.RequestHandler):
