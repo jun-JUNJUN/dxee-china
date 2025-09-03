@@ -27,7 +27,8 @@ from dataclasses import asdict
 
 from .deepthink_models import (
     DeepThinkRequest, DeepThinkResult, SearchQuery, ScrapedContent,
-    RelevanceScore, ReasoningChain, ProgressUpdate, DeepThinkStats
+    RelevanceScore, ReasoningChain, ProgressUpdate, DeepThinkStats,
+    Answer, Conclusion
 )
 from .query_generation_engine import QueryGenerationEngine, QuestionAnalysis
 from .serper_api_client import SerperAPIClient
@@ -380,7 +381,24 @@ class DeepThinkOrchestrator:
                 )
                 
                 if content_list:
-                    cached_content.extend(content_list)
+                    # Convert dict objects to ScrapedContent objects
+                    for content_dict in content_list:
+                        if isinstance(content_dict, dict):
+                            # Convert dict to ScrapedContent object
+                            content = ScrapedContent(
+                                url=content_dict.get('url', ''),
+                                title=content_dict.get('title', ''),
+                                text_content=content_dict.get('content', ''),  # Note: MongoDB stores as 'content'
+                                markdown_content=content_dict.get('markdown_content', ''),
+                                word_count=content_dict.get('word_count', 0),
+                                extraction_timestamp=content_dict.get('extraction_timestamp', datetime.now()),
+                                metadata=content_dict.get('metadata', {})
+                            )
+                            cached_content.append(content)
+                        elif isinstance(content_dict, ScrapedContent):
+                            # Already a ScrapedContent object
+                            cached_content.append(content_dict)
+                    
                     cache_hits += len(content_list)
                     logger.info(f"Cache hit: {len(content_list)} results for '{query.text}'")
                 else:
@@ -437,9 +455,16 @@ class DeepThinkOrchestrator:
                                 elif isinstance(data, dict) and 'results' in data:
                                     search_results.extend(data['results'])
             
-            # Filter out already cached URLs
+            # Filter out already cached URLs - handle both dict and ScrapedContent cached_content
+            cached_urls = set()
+            for content in cached_content:
+                if isinstance(content, ScrapedContent):
+                    cached_urls.add(content.url)
+                elif isinstance(content, dict):
+                    cached_urls.add(content.get('url', ''))
+                    
             fresh_results = [
-                result for result in search_results 
+                result for result in search_results
                 if result.get('link') not in cached_urls
             ]
             
@@ -469,38 +494,104 @@ class DeepThinkOrchestrator:
                         'type': 'scrape'
                     })
             
-            # Batch extract content
+            # Batch extract content with better error handling
             if extraction_requests:
-                extracted_results = await self.serper_client.batch_search(extraction_requests)
-                
-                for i, result in enumerate(extracted_results):
-                    if result.get('success') and 'text' in result.get('data', {}):
-                        # Create ScrapedContent object
-                        original_result = search_results[i] if i < len(search_results) else {}
-                        
-                        content = ScrapedContent(
-                            url=extraction_requests[i]['url'],
-                            title=original_result.get('title', 'Unknown Title'),
-                            text_content=result['data'].get('text', ''),
-                            markdown_content=result['data'].get('markdown', result['data'].get('text', '')),
-                            word_count=len(result['data'].get('text', '').split()),
-                            extraction_timestamp=datetime.now(),
-                            metadata={
-                                'snippet': original_result.get('snippet', ''),
-                                'position': original_result.get('position', 0),
-                                'extraction_success': True
-                            }
-                        )
-                        
-                        # Cache the content with correct signature: url, content, query_text, request_id, relevance_score
-                        await self.mongodb_service.cache_scraped_content(
-                            url=content.url,
-                            content=content.text_content,
-                            query_text=getattr(self, '_current_question', 'research_query'),
-                            request_id=getattr(self, '_current_request_id', 'unknown'),
-                            relevance_score=0.0
-                        )
-                        all_content.append(content)
+                try:
+                    extracted_results = await self.serper_client.batch_search(extraction_requests)
+                    
+                    for i, result in enumerate(extracted_results):
+                        try:
+                            if result.get('success') and 'text' in result.get('data', {}):
+                                # Create ScrapedContent object from successful extraction
+                                original_result = search_results[i] if i < len(search_results) else {}
+                                
+                                content = ScrapedContent(
+                                    url=extraction_requests[i]['url'],
+                                    title=original_result.get('title', 'Unknown Title'),
+                                    text_content=result['data'].get('text', ''),
+                                    markdown_content=result['data'].get('markdown', result['data'].get('text', '')),
+                                    word_count=len(result['data'].get('text', '').split()),
+                                    extraction_timestamp=datetime.now(),
+                                    metadata={
+                                        'snippet': original_result.get('snippet', ''),
+                                        'position': original_result.get('position', 0),
+                                        'extraction_success': True
+                                    }
+                                )
+                                
+                                # Cache the content with correct signature: url, content, query_text, request_id, relevance_score
+                                await self.mongodb_service.cache_scraped_content(
+                                    url=content.url,
+                                    content=content.text_content,
+                                    query_text=getattr(self, '_current_question', 'research_query'),
+                                    request_id=getattr(self, '_current_request_id', 'unknown'),
+                                    relevance_score=0.0
+                                )
+                                all_content.append(content)
+                            else:
+                                # Extraction failed - create content from search result
+                                original_result = search_results[i] if i < len(search_results) else {}
+                                snippet = original_result.get('snippet', '')
+                                
+                                content = ScrapedContent(
+                                    url=extraction_requests[i]['url'],
+                                    title=original_result.get('title', 'Unknown Title'),
+                                    text_content=snippet,
+                                    markdown_content='',
+                                    word_count=len(snippet.split()) if snippet else 0,
+                                    extraction_timestamp=datetime.now(),
+                                    metadata={
+                                        'snippet': snippet,
+                                        'position': original_result.get('position', 0),
+                                        'extraction_success': False,
+                                        'source': 'search_fallback'
+                                    }
+                                )
+                                all_content.append(content)
+                                
+                        except Exception as item_error:
+                            logger.warning(f"Failed to process extraction result {i}: {item_error}")
+                            # Create fallback content even if individual processing fails
+                            original_result = search_results[i] if i < len(search_results) else {}
+                            snippet = original_result.get('snippet', 'No content available')
+                            
+                            fallback_content = ScrapedContent(
+                                url=extraction_requests[i]['url'] if i < len(extraction_requests) else '',
+                                title=original_result.get('title', 'Unknown Title'),
+                                text_content=snippet,
+                                markdown_content='',
+                                word_count=len(snippet.split()) if snippet else 0,
+                                extraction_timestamp=datetime.now(),
+                                metadata={
+                                    'snippet': snippet,
+                                    'extraction_success': False,
+                                    'source': 'error_fallback',
+                                    'error': str(item_error)
+                                }
+                            )
+                            all_content.append(fallback_content)
+                            
+                except Exception as batch_error:
+                    logger.error(f"Batch content extraction failed: {batch_error}")
+                    # Create content from search results as fallback
+                    for i, search_result in enumerate(search_results):
+                        if i < len(extraction_requests):
+                            snippet = search_result.get('snippet', 'No content available')
+                            fallback_content = ScrapedContent(
+                                url=extraction_requests[i]['url'],
+                                title=search_result.get('title', 'Unknown Title'),
+                                text_content=snippet,
+                                markdown_content='',
+                                word_count=len(snippet.split()) if snippet else 0,
+                                extraction_timestamp=datetime.now(),
+                                metadata={
+                                    'snippet': snippet,
+                                    'extraction_success': False,
+                                    'source': 'batch_error_fallback',
+                                    'error': str(batch_error)
+                                }
+                            )
+                            all_content.append(fallback_content)
             
             self.current_step = 5
             return all_content
@@ -534,23 +625,49 @@ class DeepThinkOrchestrator:
                     # Skip string content, can't process it
                     continue
                 
-                # Evaluate relevance
-                content_analysis = await self.reasoning_engine.evaluate_relevance(
-                    content, question
-                )
+                # Validate content before evaluation - use snippet as fallback
+                text_to_evaluate = content.text_content or ""
+                if not text_to_evaluate.strip():
+                    # Try to use snippet from metadata as fallback
+                    text_to_evaluate = content.metadata.get('snippet', '') if content.metadata else ""
+                    if text_to_evaluate.strip():
+                        # Update content with snippet text for evaluation
+                        content.text_content = text_to_evaluate
+                        logger.info(f"Using snippet as text_content for evaluation: {content.url}")
+                    else:
+                        logger.warning(f"Skipping content with no text or snippet: {content.url}")
+                        continue
                 
-                # Convert ContentAnalysis to RelevanceScore
-                relevance_score = RelevanceScore(
-                    score=content_analysis.relevance_score,
-                    reasoning=f"Relevance: {content_analysis.relevance_score}/10, Evidence: {content_analysis.evidence_strength}",
-                    confidence=content_analysis.confidence,
-                    key_points=content_analysis.key_points,
-                    content_url=content.url
-                )
-                
-                # Keep content with relevance >= 7.0
-                if relevance_score.score >= 7.0:
-                    relevant_content.append((content, relevance_score))
+                try:
+                    # Evaluate relevance
+                    content_analysis = await self.reasoning_engine.evaluate_relevance(
+                        content, question
+                    )
+                    
+                    # Convert ContentAnalysis to RelevanceScore
+                    relevance_score = RelevanceScore(
+                        score=content_analysis.relevance_score,
+                        reasoning=f"Relevance: {content_analysis.relevance_score}/10, Evidence: {content_analysis.evidence_strength}",
+                        confidence=content_analysis.confidence,
+                        key_points=content_analysis.key_points,
+                        content_url=content.url
+                    )
+                    
+                    # Keep content with relevance >= 7.0
+                    if relevance_score.score >= 7.0:
+                        relevant_content.append((content, relevance_score))
+                        
+                except Exception as eval_error:
+                    logger.error(f"Relevance evaluation failed for {content.url}: {eval_error}")
+                    # Create a fallback relevance score
+                    fallback_score = RelevanceScore(
+                        score=7.0,  # Neutral passing score
+                        reasoning=f"Fallback evaluation - error: {str(eval_error)[:100]}",
+                        confidence=0.5,
+                        key_points=["Content evaluation failed"],
+                        content_url=content.url
+                    )
+                    relevant_content.append((content, fallback_score))
             
             # Sort by relevance score (highest first)
             relevant_content.sort(key=lambda x: x[1].score, reverse=True)
@@ -599,6 +716,14 @@ class DeepThinkOrchestrator:
     ) -> List[ReasoningChain]:
         """Generate reasoning chains for the content"""
         try:
+            # Validate and normalize question parameter
+            if isinstance(question, list):
+                question = ' '.join(str(item) for item in question if item)
+                logger.warning("Question parameter was a list, converted to string")
+            elif not isinstance(question, str):
+                question = str(question) if question else ""
+                logger.warning("Question parameter was not a string, converted")
+            
             # Debug logging
             logger.info(f"_generate_reasoning called with question: '{question}' (length: {len(question) if question else 0})")
             
@@ -610,14 +735,21 @@ class DeepThinkOrchestrator:
             reasoning_chains = []
             content_only = [content for content, _ in relevant_content]
             
-            # Generate reasoning chains
+            # Convert ScrapedContent to ContentAnalysis for the reasoning engine
+            content_analyses = []
+            for content, relevance_score in relevant_content:
+                # Create ContentAnalysis from ScrapedContent and RelevanceScore
+                content_analysis = self._convert_to_content_analysis(content, relevance_score)
+                content_analyses.append(content_analysis)
+            
+            # Generate reasoning chains with correct parameter order
             chains = await self.reasoning_engine.generate_reasoning_chains(
-                question, content_only
+                content_analyses, question
             )
             reasoning_chains.extend(chains)
             
-            # Check for contradictions
-            contradictions = await self.reasoning_engine.identify_contradictions(content_only)
+            # Check for contradictions with correct parameter order
+            contradictions = await self.reasoning_engine.identify_contradictions(content_analyses, question)
             
             # Add contradiction analysis as reasoning chains
             for contradiction in contradictions:
@@ -647,6 +779,14 @@ class DeepThinkOrchestrator:
     ) -> Tuple[str, str]:
         """Synthesize comprehensive and summary answers"""
         try:
+            # Validate and normalize question parameter
+            if isinstance(question, list):
+                question = ' '.join(str(item) for item in question if item)
+                logger.warning("Question parameter was a list, converted to string")
+            elif not isinstance(question, str):
+                question = str(question) if question else ""
+                logger.warning("Question parameter was not a string, converted")
+                
             # Debug logging
             logger.info(f"_synthesize_answers called with question: '{question}' (length: {len(question) if question else 0})")
             
@@ -656,18 +796,35 @@ class DeepThinkOrchestrator:
                 fallback_answer = self._create_fallback_answer(relevant_content)
                 return fallback_answer, fallback_answer[:500] + "..."
                 
-            # Prepare content for synthesis
-            content_only = [content for content, _ in relevant_content]
-            relevance_scores = [score for _, score in relevant_content]
+            # Prepare content for synthesis - convert to ContentAnalysis
+            content_analyses = []
+            for content, relevance_score in relevant_content:
+                content_analysis = self._convert_to_content_analysis(content, relevance_score)
+                content_analyses.append(content_analysis)
             
-            # Generate both formats
-            comprehensive_answer = await self.answer_synthesizer.generate_comprehensive_answer(
-                question, content_only, relevance_scores, reasoning_chains
-            )
-            
-            summary_answer = await self.answer_synthesizer.generate_summary(
-                question, content_only, relevance_scores
-            )
+            # Use the complete synthesis method instead of individual methods
+            try:
+                synthesized_response = await self.answer_synthesizer.synthesize_complete_response(
+                    content_analyses, question, reasoning_chains
+                )
+                
+                # Store the synthesized response for structured result creation
+                self._current_synthesized_response = synthesized_response
+                
+                # Return the text versions for backward compatibility
+                comprehensive_answer = synthesized_response.comprehensive_answer
+                summary_answer = synthesized_response.summary
+                
+            except Exception as e:
+                logger.warning(f"Complete synthesis failed, falling back to individual methods: {e}")
+                # Fallback to original method
+                comprehensive_answer = await self.answer_synthesizer.generate_comprehensive_answer(
+                    content_analyses, question, reasoning_chains
+                )
+                summary_answer = await self.answer_synthesizer.generate_summary(
+                    comprehensive_answer, question
+                )
+                self._current_synthesized_response = None
             
             self.current_step = 8
             return comprehensive_answer, summary_answer
@@ -677,6 +834,28 @@ class DeepThinkOrchestrator:
             # Fallback to basic content aggregation
             fallback_answer = self._create_fallback_answer(relevant_content)
             return fallback_answer, fallback_answer[:500] + "..."
+    
+    def _convert_to_content_analysis(self, scraped_content, relevance_score):
+        """Convert ScrapedContent and RelevanceScore to ContentAnalysis format"""
+        from .jan_reasoning_engine import ContentAnalysis, ReasoningType
+        import hashlib
+        
+        # Generate content ID
+        content_id = hashlib.sha256(scraped_content.text_content.encode()).hexdigest()[:12]
+        
+        return ContentAnalysis(
+            content_id=content_id,
+            relevance_score=relevance_score.score,
+            confidence=relevance_score.confidence,
+            key_points=relevance_score.key_points,
+            evidence_strength="moderate",  # Default value
+            source_credibility="medium",   # Default value
+            reasoning_type=ReasoningType.DEDUCTIVE,  # Default value
+            supporting_facts=relevance_score.key_points,  # Use key_points as supporting facts
+            contradictory_facts=[],
+            uncertainty_areas=[],
+            evaluation_time=0.0
+        )
     
     async def _format_result(
         self,
@@ -696,17 +875,98 @@ class DeepThinkOrchestrator:
         processing_time = time.time() - start_time
         content_only = [content for content, _ in relevant_content]
         scores_only = [score for _, score in relevant_content]
+        confidence_score = self._calculate_confidence(scores_only, reasoning_chains)
+        
+        # Extract data from synthesized response if available
+        synthesized_response = getattr(self, '_current_synthesized_response', None)
+        
+        # Create structured Answer object
+        sources = [content.url for content in content_only[:10]]  # Top 10 sources
+        key_findings = []
+        uncertainties = []
+        gaps = []
+        statistics = {}
+        
+        if synthesized_response:
+            key_findings = synthesized_response.key_findings
+            uncertainties = synthesized_response.uncertainties
+            statistics = {
+                'sources_analyzed': synthesized_response.sources_analyzed,
+                'high_relevance_sources': synthesized_response.high_relevance_sources,
+                'reasoning_chains_used': synthesized_response.reasoning_chains_used,
+                'synthesis_time': synthesized_response.synthesis_time
+            }
+            # Extract potential gaps from uncertainties
+            gaps = [f"Need more information about: {uncertainty}" for uncertainty in uncertainties[:3]]
+        else:
+            # Fallback: extract key findings from relevance scores
+            key_findings = []
+            for score in scores_only[:5]:
+                if score.key_points:
+                    key_findings.extend(score.key_points[:2])
+        
+        answer = Answer(
+            content=comprehensive_answer,
+            confidence=confidence_score,
+            sources=sources,
+            statistics=statistics if statistics else None,
+            gaps=gaps,
+            versions=[{
+                'version': 1,
+                'content': comprehensive_answer[:200] + "..." if len(comprehensive_answer) > 200 else comprehensive_answer,
+                'timestamp': datetime.now().isoformat(),
+                'confidence': confidence_score
+            }],
+            generation_time=processing_time,
+            key_findings=key_findings,
+            uncertainties=uncertainties
+        )
+        
+        # Create structured Conclusion object
+        confidence_level = "high" if confidence_score >= 0.8 else "medium" if confidence_score >= 0.6 else "low"
+        limitations = []
+        recommendations = []
+        further_research = []
+        
+        # Generate limitations based on available data
+        if len(content_only) < 3:
+            limitations.append("Limited number of sources available for analysis")
+        if confidence_score < 0.7:
+            limitations.append("Some information may be incomplete or uncertain")
+        if not reasoning_chains:
+            limitations.append("Limited reasoning chains available for validation")
+        
+        # Generate recommendations based on question analysis
+        if question_analysis and hasattr(question_analysis, 'question_type'):
+            if question_analysis.question_type in ['how', 'implementation']:
+                recommendations.append("Consider consulting primary sources or experts for implementation details")
+            elif question_analysis.question_type in ['comparison', 'evaluation']:
+                recommendations.append("Review multiple perspectives before making final decisions")
+        
+        # Suggest further research based on gaps and uncertainties
+        for uncertainty in uncertainties[:2]:
+            further_research.append(f"Research needed on: {uncertainty}")
+        
+        conclusion = Conclusion(
+            summary=summary_answer,
+            confidence_level=confidence_level,
+            limitations=limitations,
+            recommendations=recommendations,
+            further_research=further_research
+        )
         
         result = DeepThinkResult(
             request_id=request.request_id,
             question=request.question,
-            comprehensive_answer=comprehensive_answer,
-            summary_answer=summary_answer,
+            answer=answer,
+            conclusion=conclusion,
+            comprehensive_answer=comprehensive_answer,  # Keep for backward compatibility
+            summary_answer=summary_answer,  # Keep for backward compatibility
             search_queries=search_queries,
             scraped_content=content_only,
             relevance_scores=scores_only,
             reasoning_chains=reasoning_chains,
-            confidence_score=self._calculate_confidence(scores_only, reasoning_chains),
+            confidence_score=confidence_score,
             processing_time=processing_time,
             total_sources=len(content_only),
             cache_hits=cache_hits,

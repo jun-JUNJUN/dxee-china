@@ -173,12 +173,62 @@ class DeepThinkStats:
 
 
 @dataclass
+class Answer:
+    """Structured answer similar to test file format"""
+    content: str
+    confidence: float
+    sources: List[str] = field(default_factory=list)
+    statistics: Optional[Dict[str, Any]] = None
+    gaps: List[str] = field(default_factory=list)
+    versions: List[Dict[str, Any]] = field(default_factory=list)
+    generation_time: float = 0.0
+    key_findings: List[str] = field(default_factory=list)
+    uncertainties: List[str] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage/serialization"""
+        return {
+            'content': self.content,
+            'confidence': self.confidence,
+            'sources': self.sources,
+            'statistics': self.statistics,
+            'gaps': self.gaps,
+            'versions': self.versions,
+            'generation_time': self.generation_time,
+            'key_findings': self.key_findings,
+            'uncertainties': self.uncertainties
+        }
+
+
+@dataclass
+class Conclusion:
+    """Structured conclusion section"""
+    summary: str
+    confidence_level: str  # high, medium, low
+    limitations: List[str] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
+    further_research: List[str] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage/serialization"""
+        return {
+            'summary': self.summary,
+            'confidence_level': self.confidence_level,
+            'limitations': self.limitations,
+            'recommendations': self.recommendations,
+            'further_research': self.further_research
+        }
+
+
+@dataclass
 class DeepThinkResult:
     """Model for final deep-think results"""
     request_id: str
     question: str
-    comprehensive_answer: str
-    summary_answer: str  # Changed from summary
+    answer: Answer  # Structured answer object
+    conclusion: Conclusion  # Structured conclusion object
+    comprehensive_answer: str  # Keep for backward compatibility
+    summary_answer: str  # Keep for backward compatibility
     search_queries: List[SearchQuery] = field(default_factory=list)
     scraped_content: List[ScrapedContent] = field(default_factory=list)
     relevance_scores: List[RelevanceScore] = field(default_factory=list)
@@ -210,6 +260,8 @@ class DeepThinkResult:
         return {
             'request_id': self.request_id,
             'question': self.question,
+            'answer': self.answer.to_dict() if self.answer else None,
+            'conclusion': self.conclusion.to_dict() if self.conclusion else None,
             'comprehensive_answer': self.comprehensive_answer,
             'summary_answer': self.summary_answer,
             'search_queries': [q.to_dict() for q in self.search_queries],
