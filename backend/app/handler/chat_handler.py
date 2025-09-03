@@ -846,8 +846,9 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                                     await self.flush()
                                     await asyncio.sleep(0.03)  # Small delay for realistic streaming
                             
-                            # Send final completion
-                            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'deepthink_result': result}, cls=MongoJSONEncoder)}\n\n")
+                            # Send final completion - serialize result properly
+                            result_dict = result.to_dict() if hasattr(result, 'to_dict') else result
+                            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'deepthink_result': result_dict}, cls=MongoJSONEncoder)}\n\n")
                             await self.flush()
                             
                             # Store the complete AI response in MongoDB

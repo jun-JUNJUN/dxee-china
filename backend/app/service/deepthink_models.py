@@ -24,6 +24,18 @@ class DeepThinkRequest:
     timestamp: datetime
     timeout_seconds: int = 600
     max_queries: int = 5
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for MongoDB storage"""
+        return {
+            'request_id': self.request_id,
+            'question': self.question,
+            'chat_id': self.chat_id,
+            'user_id': self.user_id,
+            'timestamp': self.timestamp,
+            'timeout_seconds': self.timeout_seconds,
+            'max_queries': self.max_queries
+        }
 
 
 @dataclass
@@ -34,6 +46,16 @@ class SearchQuery:
     priority: int
     operators: Dict[str, str] = field(default_factory=dict)  # Changed from advanced_operators
     expected_results: str = "General search results"  # Added for orchestrator compatibility
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for MongoDB storage"""
+        return {
+            'text': self.text,
+            'query_type': self.query_type,
+            'priority': self.priority,
+            'operators': self.operators,
+            'expected_results': self.expected_results
+        }
 
 
 @dataclass
@@ -46,6 +68,18 @@ class ScrapedContent:
     word_count: int = 0
     extraction_timestamp: datetime = field(default_factory=datetime.now)  # Changed from extraction_time
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for MongoDB storage"""
+        return {
+            'url': self.url,
+            'title': self.title,
+            'text_content': self.text_content,
+            'markdown_content': self.markdown_content,
+            'word_count': self.word_count,
+            'extraction_timestamp': self.extraction_timestamp,
+            'metadata': self.metadata
+        }
 
 
 @dataclass
@@ -56,6 +90,16 @@ class RelevanceScore:
     confidence: float
     key_points: List[str] = field(default_factory=list)
     content_url: str = ""
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for MongoDB storage"""
+        return {
+            'score': self.score,
+            'reasoning': self.reasoning,
+            'confidence': self.confidence,
+            'key_points': self.key_points,
+            'content_url': self.content_url
+        }
 
 
 @dataclass
@@ -68,6 +112,64 @@ class ReasoningChain:
     supporting_evidence: List[str] = field(default_factory=list)
     logical_steps: List[str] = field(default_factory=list)
     source_urls: List[str] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for MongoDB storage"""
+        return {
+            'premise': self.premise,
+            'reasoning': self.reasoning,
+            'conclusion': self.conclusion,
+            'confidence': self.confidence,
+            'supporting_evidence': self.supporting_evidence,
+            'logical_steps': self.logical_steps,
+            'source_urls': self.source_urls
+        }
+
+
+@dataclass
+class ProgressUpdate:
+    """Model for streaming progress updates"""
+    step: int
+    total_steps: int
+    description: str
+    progress_percent: float
+    details: Dict[str, Any] = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=datetime.now)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'step': self.step,
+            'total_steps': self.total_steps,
+            'description': self.description,
+            'progress_percent': self.progress_percent,
+            'details': self.details,
+            'timestamp': self.timestamp
+        }
+
+
+@dataclass
+class DeepThinkStats:
+    """Model for deep-think processing statistics"""
+    total_requests: int = 0
+    successful_requests: int = 0
+    error_requests: int = 0
+    timeout_errors: int = 0
+    total_processing_time: float = 0.0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization"""
+        return {
+            'total_requests': self.total_requests,
+            'successful_requests': self.successful_requests,
+            'error_requests': self.error_requests,
+            'timeout_errors': self.timeout_errors,
+            'total_processing_time': self.total_processing_time,
+            'cache_hits': self.cache_hits,
+            'cache_misses': self.cache_misses
+        }
 
 
 @dataclass
@@ -88,6 +190,40 @@ class DeepThinkResult:
     cache_misses: int = 0
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for MongoDB storage"""
+        # Handle metadata properly - convert QuestionAnalysis if present
+        metadata_dict = dict(self.metadata) if self.metadata else {}
+        if 'question_analysis' in metadata_dict:
+            analysis = metadata_dict['question_analysis']
+            if hasattr(analysis, 'to_dict'):
+                metadata_dict['question_analysis'] = analysis.to_dict()
+            elif hasattr(analysis, '__dict__'):
+                # Fallback for objects without to_dict method
+                analysis_dict = dict(analysis.__dict__)
+                # Convert enum values to strings
+                if 'complexity' in analysis_dict and hasattr(analysis_dict['complexity'], 'value'):
+                    analysis_dict['complexity'] = analysis_dict['complexity'].value
+                metadata_dict['question_analysis'] = analysis_dict
+        
+        return {
+            'request_id': self.request_id,
+            'question': self.question,
+            'comprehensive_answer': self.comprehensive_answer,
+            'summary_answer': self.summary_answer,
+            'search_queries': [q.to_dict() for q in self.search_queries],
+            'scraped_content': [c.to_dict() for c in self.scraped_content],
+            'relevance_scores': [r.to_dict() for r in self.relevance_scores],
+            'reasoning_chains': [rc.to_dict() for rc in self.reasoning_chains],
+            'confidence_score': self.confidence_score,
+            'processing_time': self.processing_time,
+            'total_sources': self.total_sources,
+            'cache_hits': self.cache_hits,
+            'cache_misses': self.cache_misses,
+            'timestamp': self.timestamp,
+            'metadata': metadata_dict
+        }
 
 
 def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:

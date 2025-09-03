@@ -451,40 +451,84 @@ class SerperAPIClient:
             logger.error(f"Scraping failed for URL '{url}': {e}")
             raise
     
-    async def batch_search(self, queries: List[str], num_results: int = 10, 
+    async def batch_search(self, search_requests: List[Dict[str, Any]],
                           delay_between_requests: float = 1.0) -> List[Dict[str, Any]]:
         """
-        Perform multiple searches with rate limiting
+        Perform batch search operations
         
         Args:
-            queries: List of search queries
-            num_results: Number of results per query
+            search_requests: List of request dictionaries with format:
+                {'q': 'query', 'type': 'search'/'scrape', 'engine': 'google', 'url': '...' (for scrape)}
             delay_between_requests: Delay between requests in seconds
-            
+                
         Returns:
-            List of search results for each query
+            List of results corresponding to each request
         """
-        if not queries:
+        if not search_requests:
             return []
         
         results = []
         
-        for i, query in enumerate(queries):
+        for i, request in enumerate(search_requests):
             try:
-                result = await self.search(query, num_results)
-                results.append(result)
+                request_type = request.get('type', 'search')
+                
+                if request_type == 'search':
+                    query = request.get('q', '')
+                    if not query:
+                        logger.warning(f"Empty query in batch request: {request}")
+                        results.append({'success': False, 'error': 'Empty query'})
+                        continue
+                    
+                    # Perform search
+                    search_result = await self.search(
+                        query=query,
+                        num_results=request.get('num', 10),
+                        country=request.get('gl', 'us'),
+                        location=request.get('location', ''),
+                        language=request.get('hl', 'en')
+                    )
+                    
+                    results.append({
+                        'success': True,
+                        'data': search_result,
+                        'request': request
+                    })
+                    
+                elif request_type == 'scrape':
+                    url = request.get('url', '')
+                    if not url:
+                        logger.warning(f"Empty URL in batch scrape request: {request}")
+                        results.append({'success': False, 'error': 'Empty URL'})
+                        continue
+                    
+                    # Perform scraping
+                    scrape_result = await self.scrape(
+                        url=url,
+                        extract_text=request.get('extractText', True),
+                        extract_markdown=request.get('extractMarkdown', True)
+                    )
+                    
+                    results.append({
+                        'success': True,
+                        'data': scrape_result,
+                        'request': request
+                    })
+                    
+                else:
+                    logger.warning(f"Unknown request type in batch: {request_type}")
+                    results.append({'success': False, 'error': f'Unknown request type: {request_type}'})
                 
                 # Add delay between requests (except after the last one)
-                if i < len(queries) - 1:
+                if i < len(search_requests) - 1:
                     await asyncio.sleep(delay_between_requests)
                     
             except Exception as e:
-                logger.error(f"Batch search failed for query '{query}': {e}")
-                # Store error result to maintain query-result alignment
+                logger.error(f"Batch search failed for request '{request}': {e}")
                 results.append({
+                    'success': False,
                     'error': str(e),
-                    'query': query,
-                    'organic': []
+                    'request': request
                 })
         
         return results

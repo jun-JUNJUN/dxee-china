@@ -160,7 +160,7 @@ class DeepThinkOrchestrator:
             raise
     
     async def _process_deep_think_internal(
-        self, 
+        self,
         request: DeepThinkRequest,
         progress_callback: Optional[callable] = None
     ) -> DeepThinkResult:
@@ -168,11 +168,15 @@ class DeepThinkOrchestrator:
         start_time = time.time()
         
         try:
+            # Store current request context for use in caching
+            self._current_question = request.question
+            self._current_request_id = request.request_id
+            
             # Step 1: Initialize MongoDB cache
             await self._update_progress("Initializing MongoDB cache", progress_callback)
             await self._initialize_cache()
             
-            # Step 2: Analyze question and generate search queries  
+            # Step 2: Analyze question and generate search queries
             await self._update_progress("Analyzing question and generating search queries", progress_callback)
             question_analysis, search_queries = await self._generate_queries(request.question)
             
@@ -194,10 +198,12 @@ class DeepThinkOrchestrator:
             
             # Step 7: Generate reasoning chains
             await self._update_progress("Generating reasoning chains", progress_callback)
+            logger.info(f"About to call _generate_reasoning with question: '{request.question}'")
             reasoning_chains = await self._generate_reasoning(request.question, relevant_content)
             
             # Step 8: Synthesize comprehensive answer
             await self._update_progress("Synthesizing comprehensive answer", progress_callback)
+            logger.info(f"About to call _synthesize_answers with question: '{request.question}'")
             comprehensive_answer, summary_answer = await self._synthesize_answers(
                 request.question, relevant_content, reasoning_chains
             )
@@ -446,8 +452,8 @@ class DeepThinkOrchestrator:
             return []
     
     async def _extract_and_cache_content(
-        self, 
-        search_results: List[Dict], 
+        self,
+        search_results: List[Dict],
         cached_content: List[ScrapedContent]
     ) -> List[ScrapedContent]:
         """Extract content from search results and cache it"""
@@ -486,8 +492,14 @@ class DeepThinkOrchestrator:
                             }
                         )
                         
-                        # Cache the content
-                        await self.mongodb_service.cache_scraped_content(content)
+                        # Cache the content with correct signature: url, content, query_text, request_id, relevance_score
+                        await self.mongodb_service.cache_scraped_content(
+                            url=content.url,
+                            content=content.text_content,
+                            query_text=getattr(self, '_current_question', 'research_query'),
+                            request_id=getattr(self, '_current_request_id', 'unknown'),
+                            relevance_score=0.0
+                        )
                         all_content.append(content)
             
             self.current_step = 5
@@ -539,12 +551,20 @@ class DeepThinkOrchestrator:
             return fallback_content
     
     async def _generate_reasoning(
-        self, 
-        question: str, 
+        self,
+        question: str,
         relevant_content: List[Tuple[ScrapedContent, RelevanceScore]]
     ) -> List[ReasoningChain]:
         """Generate reasoning chains for the content"""
         try:
+            # Debug logging
+            logger.info(f"_generate_reasoning called with question: '{question}' (length: {len(question) if question else 0})")
+            
+            # Validate question parameter
+            if not question or not question.strip():
+                logger.error("Question parameter is empty in _generate_reasoning")
+                return []
+                
             reasoning_chains = []
             content_only = [content for content, _ in relevant_content]
             
@@ -578,13 +598,22 @@ class DeepThinkOrchestrator:
             return []  # Continue without reasoning chains
     
     async def _synthesize_answers(
-        self, 
+        self,
         question: str,
         relevant_content: List[Tuple[ScrapedContent, RelevanceScore]],
         reasoning_chains: List[ReasoningChain]
     ) -> Tuple[str, str]:
         """Synthesize comprehensive and summary answers"""
         try:
+            # Debug logging
+            logger.info(f"_synthesize_answers called with question: '{question}' (length: {len(question) if question else 0})")
+            
+            # Validate question parameter
+            if not question or not question.strip():
+                logger.error("Question parameter is empty in _synthesize_answers")
+                fallback_answer = self._create_fallback_answer(relevant_content)
+                return fallback_answer, fallback_answer[:500] + "..."
+                
             # Prepare content for synthesis
             content_only = [content for content, _ in relevant_content]
             relevance_scores = [score for _, score in relevant_content]
@@ -642,7 +671,7 @@ class DeepThinkOrchestrator:
             cache_misses=cache_misses,
             timestamp=datetime.now(),
             metadata={
-                'question_analysis': question_analysis.dict() if question_analysis and hasattr(question_analysis, 'dict') else question_analysis,
+                'question_analysis': question_analysis.to_dict() if question_analysis and hasattr(question_analysis, 'to_dict') else question_analysis,
                 'user_id': request.user_id,
                 'chat_id': request.chat_id,
                 'timeout': self.timeout,
@@ -660,7 +689,8 @@ class DeepThinkOrchestrator:
     async def _store_result(self, result: DeepThinkResult):
         """Store the result in MongoDB"""
         try:
-            await self.mongodb_service.store_deepthink_result(result)
+            # Convert dataclass to dictionary for MongoDB storage
+            await self.mongodb_service.store_deepthink_result(result.to_dict())
             self.current_step = 10
         except Exception as e:
             logger.error(f"Result storage failed: {e}")

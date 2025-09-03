@@ -51,6 +51,19 @@ class QuestionAnalysis:
     requires_current_data: bool   # Whether recent information is needed
     suggested_operators: Dict[str, str]  # Search operators to use
     confidence: float             # Confidence in analysis (0-1)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'entities': self.entities,
+            'intent': self.intent,
+            'complexity': self.complexity.value,  # Convert enum to string
+            'topics': self.topics,
+            'question_type': self.question_type,
+            'requires_current_data': self.requires_current_data,
+            'suggested_operators': self.suggested_operators,
+            'confidence': self.confidence
+        }
 
 
 @dataclass  
