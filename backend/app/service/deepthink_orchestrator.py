@@ -519,9 +519,33 @@ class DeepThinkOrchestrator:
             relevant_content = []
             
             for content in content_list:
+                # Ensure we have a ScrapedContent object, not a dict or string
+                if isinstance(content, dict):
+                    # Convert dict to ScrapedContent if needed
+                    content = ScrapedContent(
+                        url=content.get('url', ''),
+                        title=content.get('title', ''),
+                        text_content=content.get('text_content', ''),
+                        markdown_content=content.get('markdown_content', ''),
+                        word_count=content.get('word_count', 0),
+                        metadata=content.get('metadata', {})
+                    )
+                elif isinstance(content, str):
+                    # Skip string content, can't process it
+                    continue
+                
                 # Evaluate relevance
-                relevance_score = await self.reasoning_engine.evaluate_relevance(
-                    question, content
+                content_analysis = await self.reasoning_engine.evaluate_relevance(
+                    content, question
+                )
+                
+                # Convert ContentAnalysis to RelevanceScore
+                relevance_score = RelevanceScore(
+                    score=content_analysis.relevance_score,
+                    reasoning=f"Relevance: {content_analysis.relevance_score}/10, Evidence: {content_analysis.evidence_strength}",
+                    confidence=content_analysis.confidence,
+                    key_points=content_analysis.key_points,
+                    content_url=content.url
                 )
                 
                 # Keep content with relevance >= 7.0
@@ -540,12 +564,30 @@ class DeepThinkOrchestrator:
             # Fallback: return all content with neutral scores
             fallback_content = []
             for content in content_list:
+                # Handle different content types safely
+                if isinstance(content, dict):
+                    content_url = content.get('url', '')
+                    # Convert dict to ScrapedContent for consistency
+                    content = ScrapedContent(
+                        url=content.get('url', ''),
+                        title=content.get('title', ''),
+                        text_content=content.get('text_content', ''),
+                        markdown_content=content.get('markdown_content', ''),
+                        word_count=content.get('word_count', 0),
+                        metadata=content.get('metadata', {})
+                    )
+                elif isinstance(content, str):
+                    # Skip string content
+                    continue
+                else:
+                    content_url = getattr(content, 'url', '')
+                
                 fallback_score = RelevanceScore(
                     score=7.0,  # Neutral passing score
                     reasoning="Fallback evaluation - relevance assumed",
                     confidence=0.5,
                     key_points=[],
-                    content_url=content.url
+                    content_url=content_url
                 )
                 fallback_content.append((content, fallback_score))
             return fallback_content

@@ -141,8 +141,27 @@ class JanReasoningEngine:
             ValueError: If inputs are invalid
             Exception: For processing errors
         """
-        if not content or not content.text_content:
+        # Handle different content types - ensure we have ScrapedContent object
+        if not content:
             raise ValueError("Content cannot be empty")
+            
+        if isinstance(content, str):
+            raise ValueError("Content must be a ScrapedContent object, not a string")
+            
+        if isinstance(content, dict):
+            # Convert dict to ScrapedContent if needed
+            from .deepthink_models import ScrapedContent
+            content = ScrapedContent(
+                url=content.get('url', ''),
+                title=content.get('title', ''),
+                text_content=content.get('text_content', ''),
+                markdown_content=content.get('markdown_content', ''),
+                word_count=content.get('word_count', 0),
+                metadata=content.get('metadata', {})
+            )
+            
+        if not hasattr(content, 'text_content') or not content.text_content:
+            raise ValueError("Content must have valid text_content")
         
         if not user_query or not user_query.strip():
             raise ValueError("User query cannot be empty")
