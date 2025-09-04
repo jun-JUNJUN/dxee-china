@@ -253,7 +253,7 @@ class AnswerSynthesizer:
                                          user_query: str, reasoning_chains: Optional[List[ReasoningChain]] = None,
                                          contradictions: Optional[List[Contradiction]] = None) -> SynthesizedAnswer:
         """
-        Synthesize complete response with both comprehensive answer and summary
+        Synthesize complete response using single API call approach like backend
         
         Args:
             content_analyses: List of analyzed content
@@ -263,10 +263,6 @@ class AnswerSynthesizer:
             
         Returns:
             SynthesizedAnswer with both formats and metadata
-            
-        Raises:
-            ValueError: If inputs are invalid
-            Exception: For synthesis errors
         """
         if not content_analyses:
             raise ValueError("Content analyses cannot be empty")
@@ -275,63 +271,50 @@ class AnswerSynthesizer:
         start_time = datetime.utcnow()
         
         try:
-            logger.info(f"Synthesizing complete response for query: '{user_query[:50]}...'")
+            logger.info(f"🧠 Synthesizing complete response using single API call: '{user_query[:50]}...'")
             
-            # Generate comprehensive answer
-            comprehensive_answer = await self.generate_comprehensive_answer(
-                content_analyses, user_query, reasoning_chains, contradictions
+            # Simple synthesis using single API call like backend
+            synthesized_content = await self._synthesize_single_call(
+                user_query, content_analyses, reasoning_chains, contradictions
             )
             
-            # Extract key findings from content analyses
-            key_findings = self._extract_key_findings(content_analyses)
+            # Parse the structured response
+            parsed_result = self._parse_synthesized_response(synthesized_content)
             
-            # Generate summary
-            summary = await self.generate_summary(comprehensive_answer, user_query, key_findings)
-            
-            # Create source citations
+            # Create source citations from content analyses
             citations = self._create_source_citations(content_analyses)
-            
-            # Calculate confidence metrics
-            confidence, confidence_level = self._calculate_confidence(content_analyses, reasoning_chains)
-            
-            # Extract uncertainty and contradiction information
-            uncertainties = self._extract_uncertainties(content_analyses, contradictions)
-            contradictions_noted = self._extract_contradiction_notes(contradictions) if contradictions else []
             
             # Calculate metrics
             high_relevance_count = len([a for a in content_analyses if a.relevance_score >= self.min_relevance_threshold])
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             self.processing_time_total += processing_time
             
-            # Track high confidence answers
-            if confidence_level == ConfidenceLevel.HIGH:
-                self.high_confidence_answers += 1
-            
+            # Create final result
             synthesized_answer = SynthesizedAnswer(
-                comprehensive_answer=comprehensive_answer,
-                summary=summary,
-                confidence=confidence,
-                confidence_level=confidence_level,
+                comprehensive_answer=parsed_result.get('comprehensive_answer', ''),
+                summary=parsed_result.get('summary', ''),
+                confidence=float(parsed_result.get('confidence', 0.7)),
+                confidence_level=self._determine_confidence_level(float(parsed_result.get('confidence', 0.7))),
                 sources_analyzed=len(content_analyses),
                 high_relevance_sources=high_relevance_count,
                 citations=citations,
-                key_findings=key_findings,
-                uncertainties=uncertainties,
-                contradictions_noted=contradictions_noted,
+                key_findings=parsed_result.get('key_findings', []),
+                uncertainties=parsed_result.get('uncertainties', []),
+                contradictions_noted=parsed_result.get('contradictions', []),
                 reasoning_chains_used=len(reasoning_chains) if reasoning_chains else 0,
-                word_count_comprehensive=len(comprehensive_answer.split()),
-                word_count_summary=len(summary.split()),
+                word_count_comprehensive=len(parsed_result.get('comprehensive_answer', '').split()),
+                word_count_summary=len(parsed_result.get('summary', '').split()),
                 synthesis_time=processing_time
             )
             
-            logger.info(f"Complete synthesis finished: {synthesized_answer.word_count_comprehensive} comp words, "
+            logger.info(f"✅ Single-call synthesis completed: {synthesized_answer.word_count_comprehensive} comp words, "
                        f"{synthesized_answer.word_count_summary} summary words, "
-                       f"confidence: {confidence:.2f}, time: {processing_time:.2f}s")
+                       f"confidence: {synthesized_answer.confidence:.2f}, time: {processing_time:.2f}s")
             
             return synthesized_answer
             
         except Exception as e:
-            logger.error(f"Complete response synthesis failed: {e}")
+            logger.error(f"Single-call synthesis failed: {e}")
             raise
     
     def format_for_chat(self, synthesized_answer: SynthesizedAnswer, 
@@ -774,6 +757,126 @@ For the most accurate answer, I recommend refining the search with more specific
         # Trim to max words and add ellipsis
         trimmed_words = words[:max_words-1]
         return ' '.join(trimmed_words) + '...'
+    
+    async def _synthesize_single_call(self, user_query: str, content_analyses: List[ContentAnalysis],
+                                    reasoning_chains: Optional[List[ReasoningChain]] = None,
+                                    contradictions: Optional[List[Contradiction]] = None) -> str:
+        """Single API call synthesis like backend approach"""
+        # Prepare source summaries (limit to top 10 for token efficiency)
+        source_texts = []
+        for i, analysis in enumerate(content_analyses[:10], 1):
+            optimized_content = analysis.key_points[:3] if hasattr(analysis, 'key_points') else [str(analysis)[:200]]
+            source_text = f"Source {i} (Relevance: {analysis.relevance_score:.1f}/10):\n{'; '.join(optimized_content)}"
+            source_texts.append(source_text)
+        
+        sources_combined = "\n\n".join(source_texts)
+        
+        # Create comprehensive prompt that generates everything in one call
+        prompt = f"""Based on the following sources, provide a complete research response to this question.
+
+Research Question: {user_query}
+
+Sources:
+{sources_combined}
+
+Instructions:
+Generate a JSON response with the following structure:
+{{
+    "comprehensive_answer": "Detailed answer addressing the question with specific facts and evidence from sources",
+    "summary": "Concise 2-3 sentence summary of the main answer",
+    "confidence": 0.85,
+    "key_findings": ["finding 1", "finding 2", "finding 3"],
+    "uncertainties": ["area of uncertainty if any"],
+    "contradictions": ["conflicting information if any"]
+}}
+
+Requirements:
+1. Comprehensive answer should be thorough and well-structured (max 2000 words)
+2. Summary should capture the essence in 2-3 sentences (max 300 words)  
+3. Include specific facts and evidence from the sources
+4. Confidence should be 0-1 based on source quality and consistency
+5. Cite information using [1], [2], etc. format
+6. Address any contradictions or uncertainties honestly
+
+Provide only valid JSON response."""
+        
+        if self.deepseek_service:
+            try:
+                # Use DeepSeek service for synthesis
+                response = await self.deepseek_service.async_chat_completion(
+                    query=prompt,
+                    system_message="You are an expert research analyst. Respond with valid JSON only.",
+                    max_retries=2,
+                    search_mode="synthesis"
+                )
+                return response.get('content', '')
+            except Exception as e:
+                logger.warning(f"DeepSeek synthesis failed: {e}, using fallback")
+                
+        # Fallback synthesis
+        return self._fallback_single_call_synthesis(user_query, content_analyses)
+    
+    def _parse_synthesized_response(self, response: str) -> Dict[str, Any]:
+        """Parse the JSON response from single-call synthesis"""
+        try:
+            # Try to extract JSON from response
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                
+                # Validate required fields
+                required_fields = ['comprehensive_answer', 'summary', 'confidence']
+                if all(field in parsed for field in required_fields):
+                    return parsed
+            
+            logger.warning("Failed to parse JSON response, using fallback parsing")
+            return self._fallback_parse_response(response)
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parsing failed: {e}, using fallback")
+            return self._fallback_parse_response(response)
+    
+    def _fallback_single_call_synthesis(self, user_query: str, content_analyses: List[ContentAnalysis]) -> str:
+        """Fallback synthesis when API is unavailable"""
+        # Simple template-based synthesis
+        comprehensive = f"Based on the available sources, regarding '{user_query}': "
+        comprehensive += " ".join([str(analysis)[:200] for analysis in content_analyses[:3]])
+        
+        summary = f"In summary, {comprehensive[:200]}..."
+        
+        return json.dumps({
+            "comprehensive_answer": comprehensive,
+            "summary": summary,
+            "confidence": 0.6,
+            "key_findings": ["Analysis based on available sources"],
+            "uncertainties": ["Limited source analysis available"],
+            "contradictions": []
+        })
+    
+    def _fallback_parse_response(self, response: str) -> Dict[str, Any]:
+        """Fallback parsing when JSON parsing fails"""
+        # Extract content manually
+        lines = response.split('\n')
+        content = ' '.join(lines[:10])  # Take first 10 lines as comprehensive
+        summary = ' '.join(lines[:2]) if len(lines) >= 2 else content[:300]
+        
+        return {
+            "comprehensive_answer": content,
+            "summary": summary,
+            "confidence": 0.7,
+            "key_findings": ["Response parsing fallback used"],
+            "uncertainties": ["Response format not as expected"],
+            "contradictions": []
+        }
+    
+    def _determine_confidence_level(self, confidence: float) -> ConfidenceLevel:
+        """Determine confidence level from numeric score"""
+        if confidence >= 0.8:
+            return ConfidenceLevel.HIGH
+        elif confidence >= 0.6:
+            return ConfidenceLevel.MEDIUM
+        else:
+            return ConfidenceLevel.LOW
     
     def get_stats(self) -> Dict[str, Any]:
         """Get synthesis engine usage statistics"""

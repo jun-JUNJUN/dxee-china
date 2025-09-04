@@ -312,6 +312,34 @@ return prioritized[:max_queries]
 - Removed dynamic query count calculation based on complexity
 - Simplified to straightforward: analyze → generate → deduplicate → prioritize → limit
 - Matches the successful backend DeepThinkingEngine pattern exactly
+### 3. **Simplified Answer Synthesis** ✅ **RESOLVED**
+**IMPLEMENTED**: Replaced complex multi-step synthesis with single API call approach:
+
+```python
+async def synthesize_complete_response(self, content_analyses: List[ContentAnalysis],
+                                     user_query: str, reasoning_chains: Optional[List[ReasoningChain]] = None,
+                                     contradictions: Optional[List[Contradiction]] = None) -> SynthesizedAnswer:
+    """Synthesize complete response using single API call approach like backend"""
+    
+    # Simple synthesis using single API call like backend
+    synthesized_content = await self._synthesize_single_call(
+        user_query, content_analyses, reasoning_chains, contradictions
+    )
+    
+    # Parse the structured response
+    parsed_result = self._parse_synthesized_response(synthesized_content)
+```
+
+**Changes Made:**
+- **New Method `_synthesize_single_call()`**: Single comprehensive API call combining all synthesis tasks
+- **New Method `_parse_synthesized_response()`**: Parse structured JSON response with fallback handling
+- **New Method `_determine_confidence_level()`**: Convert numeric confidence to enum values
+- **New Method `_fallback_single_call_synthesis()`**: Fallback when API unavailable
+- **Updated Main Method**: `synthesize_complete_response()` now uses single-call pattern instead of multiple API calls
+- **Eliminated Multi-Step Calls**: No more separate calls for comprehensive answer + summary generation
+
+**Performance Impact**: Eliminates ~50% of API calls during synthesis phase, matching backend's efficient approach.
+
 
 ### 3. **Optimize Cache Operations**
 Make cache operations truly optional and non-blocking:
