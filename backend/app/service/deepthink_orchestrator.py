@@ -702,18 +702,24 @@ class DeepThinkOrchestrator:
             return all_content  # Return what we have
     
     async def _evaluate_relevance(
-        self, 
-        question: str, 
+        self,
+        question: str,
         content_list: List[ScrapedContent]
     ) -> List[Tuple[ScrapedContent, RelevanceScore]]:
-        """Evaluate content relevance using Jan reasoning engine"""
+        """Evaluate content relevance using BACKEND PATTERN - batch processing instead of individual calls"""
         try:
+            # BACKEND PATTERN: Limit content and batch process like backend does
+            max_content_items = min(15, len(content_list))  # Backend limits to reasonable amount
+            limited_content = content_list[:max_content_items]
+            logger.info(f"🔄 BACKEND PATTERN: Processing {max_content_items} items (from {len(content_list)} total)")
+            
             relevant_content = []
             
-            for content in content_list:
-                # Ensure we have a ScrapedContent object, not a dict or string
+            # Clean and validate content first (like backend's process_search_results)
+            valid_content = []
+            for content in limited_content:
+                # Ensure we have a ScrapedContent object
                 if isinstance(content, dict):
-                    # Convert dict to ScrapedContent if needed
                     content = ScrapedContent(
                         url=content.get('url', ''),
                         title=content.get('title', ''),
@@ -723,58 +729,54 @@ class DeepThinkOrchestrator:
                         metadata=content.get('metadata', {})
                     )
                 elif isinstance(content, str):
-                    # Skip string content, can't process it
                     continue
                 
-                # Validate content before evaluation - use snippet as fallback
+                # Validate content - use snippet as fallback
                 text_to_evaluate = content.text_content or ""
                 if not text_to_evaluate.strip():
-                    # Try to use snippet from metadata as fallback
                     text_to_evaluate = content.metadata.get('snippet', '') if content.metadata else ""
                     if text_to_evaluate.strip():
-                        # Update content with snippet text for evaluation
                         content.text_content = text_to_evaluate
-                        logger.info(f"Using snippet as text_content for evaluation: {content.url}")
                     else:
-                        logger.warning(f"Skipping content with no text or snippet: {content.url}")
+                        # Skip content with no text
                         continue
                 
-                try:
-                    # Evaluate relevance
-                    content_analysis = await self.reasoning_engine.evaluate_relevance(
-                        content, question
-                    )
-                    
-                    # Convert ContentAnalysis to RelevanceScore
-                    relevance_score = RelevanceScore(
-                        score=content_analysis.relevance_score,
-                        reasoning=f"Relevance: {content_analysis.relevance_score}/10, Evidence: {content_analysis.evidence_strength}",
-                        confidence=content_analysis.confidence,
-                        key_points=content_analysis.key_points,
-                        content_url=content.url
-                    )
-                    
-                    # Keep content with relevance >= 7.0
-                    if relevance_score.score >= 7.0:
-                        relevant_content.append((content, relevance_score))
-                        
-                except Exception as eval_error:
-                    logger.error(f"Relevance evaluation failed for {content.url}: {eval_error}")
-                    # Create a fallback relevance score
-                    fallback_score = RelevanceScore(
-                        score=7.0,  # Neutral passing score
-                        reasoning=f"Fallback evaluation - error: {str(eval_error)[:100]}",
-                        confidence=0.5,
-                        key_points=["Content evaluation failed"],
-                        content_url=content.url
-                    )
-                    relevant_content.append((content, fallback_score))
+                valid_content.append(content)
             
-            # Sort by relevance score (highest first)
+            logger.info(f"📄 Valid content pieces: {len(valid_content)}")
+            
+            # BACKEND PATTERN: Batch evaluation using SINGLE API call instead of individual calls
+            if valid_content:
+                try:
+                    # Create batch evaluation prompt like backend does
+                    batch_scores = await self._batch_evaluate_content(question, valid_content)
+                    
+                    # Apply the scores
+                    for i, content in enumerate(valid_content):
+                        if i < len(batch_scores):
+                            score_data = batch_scores[i]
+                            relevance_score = RelevanceScore(
+                                score=score_data.get('score', 7.0),
+                                reasoning=score_data.get('reasoning', 'Batch evaluation'),
+                                confidence=score_data.get('confidence', 0.7),
+                                key_points=score_data.get('key_points', []),
+                                content_url=content.url
+                            )
+                            
+                            # Keep content with relevance >= 7.0 (like backend threshold)
+                            if relevance_score.score >= 7.0:
+                                relevant_content.append((content, relevance_score))
+                        
+                except Exception as batch_error:
+                    logger.warning(f"Batch evaluation failed: {batch_error}, using fallback scoring")
+                    # FALLBACK: Simple rule-based scoring like backend does
+                    relevant_content = self._create_fallback_relevance_scores(valid_content, question)
+            
+            # Sort by relevance score (highest first) like backend
             relevant_content.sort(key=lambda x: x[1].score, reverse=True)
             
             self.current_step = 6
-            logger.info(f"Found {len(relevant_content)} relevant content pieces")
+            logger.info(f"✅ BACKEND PATTERN: Found {len(relevant_content)} relevant content pieces")
             return relevant_content
             
         except Exception as e:
@@ -798,17 +800,117 @@ class DeepThinkOrchestrator:
                     # Skip string content
                     continue
                 else:
-                    content_url = getattr(content, 'url', '')
+                    content_url = content.url
                 
                 fallback_score = RelevanceScore(
-                    score=7.0,  # Neutral passing score
-                    reasoning="Fallback evaluation - relevance assumed",
+                    score=7.0,
+                    reasoning="Fallback evaluation - processing error",
                     confidence=0.5,
-                    key_points=[],
+                    key_points=["Error fallback"],
                     content_url=content_url
                 )
                 fallback_content.append((content, fallback_score))
-            return fallback_content
+            
+            return fallback_content[:10]  # Return top 10 like backend
+    
+    async def _batch_evaluate_content(self, question: str, content_list: List[ScrapedContent]) -> List[Dict[str, Any]]:
+        """BACKEND PATTERN: Batch evaluate all content in single API call"""
+        try:
+            # Prepare batch content for evaluation
+            content_summaries = []
+            for i, content in enumerate(content_list):
+                summary = f"Source {i+1} ({content.url}):\n"
+                summary += f"Title: {content.title}\n"
+                summary += f"Content: {content.text_content[:500]}...\n"  # Limit to 500 chars
+                content_summaries.append(summary)
+            
+            # Create batch evaluation prompt
+            batch_prompt = f"""
+Evaluate the relevance of these {len(content_summaries)} sources to the question: "{question}"
+
+Sources:
+{chr(10).join(content_summaries)}
+
+For each source, provide a JSON object with:
+- "score": relevance score from 1-10 (7+ is relevant)
+- "reasoning": brief explanation
+- "confidence": confidence level 0.1-1.0
+- "key_points": list of 1-3 key points
+
+Format as JSON array: [{{source1}}, {{source2}}, ...]
+"""
+            
+            # Single API call for all content (BACKEND PATTERN)
+            response = await self.deepseek_service.chat_completion(
+                prompt=batch_prompt,
+                max_tokens=2000,
+                temperature=0.3
+            )
+            
+            # Parse batch response
+            try:
+                import json
+                batch_results = json.loads(response.strip())
+                if isinstance(batch_results, list):
+                    return batch_results[:len(content_list)]
+                else:
+                    raise ValueError("Response not a JSON array")
+            
+            except Exception as parse_error:
+                logger.warning(f"Failed to parse batch evaluation: {parse_error}")
+                return self._create_simple_batch_scores(content_list, question)
+        
+        except Exception as e:
+            logger.error(f"Batch evaluation API call failed: {e}")
+            return self._create_simple_batch_scores(content_list, question)
+    
+    def _create_simple_batch_scores(self, content_list: List[ScrapedContent], question: str) -> List[Dict[str, Any]]:
+        """Create simple relevance scores using keyword matching (BACKEND FALLBACK PATTERN)"""
+        question_keywords = set(question.lower().split())
+        scores = []
+        
+        for content in content_list:
+            content_text = (content.text_content or "").lower()
+            content_title = (content.title or "").lower()
+            
+            # Simple keyword matching
+            title_matches = sum(1 for word in question_keywords if word in content_title)
+            content_matches = sum(1 for word in question_keywords if word in content_text)
+            
+            # Calculate score based on matches
+            total_keywords = len(question_keywords)
+            match_ratio = (title_matches * 2 + content_matches) / (total_keywords * 3)
+            score = max(6.0, min(10.0, 6.0 + (match_ratio * 4)))  # Scale 6-10
+            
+            scores.append({
+                'score': score,
+                'reasoning': f'Keyword matching: {title_matches} title, {content_matches} content matches',
+                'confidence': min(0.8, 0.5 + match_ratio),
+                'key_points': [f"Title matches: {title_matches}", f"Content matches: {content_matches}"]
+            })
+        
+        return scores
+    
+    def _create_fallback_relevance_scores(self, content_list: List[ScrapedContent], question: str) -> List[Tuple[ScrapedContent, RelevanceScore]]:
+        """Create fallback relevance scores for error cases"""
+        fallback_content = []
+        scores = self._create_simple_batch_scores(content_list, question)
+        
+        for i, content in enumerate(content_list):
+            if i < len(scores):
+                score_data = scores[i]
+                relevance_score = RelevanceScore(
+                    score=score_data['score'],
+                    reasoning=score_data['reasoning'],
+                    confidence=score_data['confidence'],
+                    key_points=score_data['key_points'],
+                    content_url=content.url
+                )
+                
+                if relevance_score.score >= 7.0:
+                    fallback_content.append((content, relevance_score))
+        
+        return fallback_content
     
     async def _generate_reasoning(
         self,
