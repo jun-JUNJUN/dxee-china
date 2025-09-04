@@ -116,7 +116,7 @@ class DeepThinkOrchestrator:
         logger.info(f"DeepThinkOrchestrator initialized with {timeout}s timeout")
     
     async def process_deep_think(
-        self, 
+        self,
         request: DeepThinkRequest,
         progress_callback: Optional[callable] = None
     ) -> DeepThinkResult:
@@ -135,7 +135,7 @@ class DeepThinkOrchestrator:
             ValueError: If request is invalid
             Exception: For other processing errors
         """
-        start_time = time.time()
+        self.start_time = time.time()  # Store as instance variable for timeout checks
         self.current_step = 0
         
         try:
@@ -145,11 +145,8 @@ class DeepThinkOrchestrator:
             
             logger.info(f"Starting deep-think processing for: {request.question[:100]}...")
             
-            # Wrap the entire processing in timeout
-            return await asyncio.wait_for(
-                self._process_deep_think_internal(request, progress_callback),
-                timeout=self.timeout
-            )
+            # Direct processing without asyncio.wait_for wrapper
+            return await self._process_deep_think_internal(request, progress_callback)
             
         except asyncio.TimeoutError:
             self.stats.timeout_errors += 1
@@ -160,13 +157,19 @@ class DeepThinkOrchestrator:
             logger.error(f"Deep-think processing failed: {str(e)}")
             raise
     
+    def _check_timeout(self) -> bool:
+        """Check if research timeout reached - simplified approach like backend"""
+        if hasattr(self, 'start_time') and self.start_time:
+            return (time.time() - self.start_time) >= self.timeout
+        return False
+    
     async def _process_deep_think_internal(
         self,
         request: DeepThinkRequest,
         progress_callback: Optional[callable] = None
     ) -> DeepThinkResult:
-        """Internal processing method with timeout wrapper"""
-        start_time = time.time()
+        """Internal processing method with simple timeout checks"""
+        processing_start = time.time()
         
         try:
             # Store current request context for use in caching
@@ -185,6 +188,11 @@ class DeepThinkOrchestrator:
             await self._update_progress("Checking cache for existing content", progress_callback)
             cached_content, cache_hits, cache_misses = await self._check_content_cache(search_queries)
             
+            # Timeout check after query generation and cache lookup (Layer 1)
+            if self._check_timeout():
+                logger.warning("Research timeout reached after query generation phase")
+                raise asyncio.TimeoutError("Deep-think research timed out after 600 seconds")
+            
             # Step 4: Perform web searches for missing content
             await self._update_progress("Performing web searches", progress_callback)
             search_results = await self._perform_searches(search_queries, cached_content)
@@ -196,6 +204,11 @@ class DeepThinkOrchestrator:
             # Step 6: Evaluate content relevance
             await self._update_progress("Evaluating content relevance", progress_callback)
             relevant_content = await self._evaluate_relevance(request.question, all_content)
+            
+            # Timeout check after search and content extraction (Layer 2)
+            if self._check_timeout():
+                logger.warning("Research timeout reached after search and extraction phase")
+                raise asyncio.TimeoutError("Deep-think research timed out after 600 seconds")
             
             # Step 7: Generate reasoning chains
             await self._update_progress("Generating reasoning chains", progress_callback)
@@ -214,7 +227,7 @@ class DeepThinkOrchestrator:
             result = await self._format_result(
                 request, question_analysis, search_queries, relevant_content,
                 reasoning_chains, comprehensive_answer, summary_answer,
-                cache_hits, cache_misses, start_time
+                cache_hits, cache_misses, processing_start
             )
             
             # Step 10: Store result and cleanup
@@ -222,7 +235,7 @@ class DeepThinkOrchestrator:
             await self._store_result(result)
             
             # Update statistics
-            processing_time = time.time() - start_time
+            processing_time = time.time() - processing_start
             self.stats.total_requests += 1
             self.stats.successful_requests += 1
             self.stats.total_processing_time += processing_time
@@ -268,18 +281,13 @@ class DeepThinkOrchestrator:
             progress_updates.append(update)
         
         try:
-            # Start processing with improved timeout handling
+            # Start processing with simplified approach - no asyncio.wait_for wrapper
             process_task = asyncio.create_task(
-                asyncio.wait_for(
-                    self.process_deep_think(request, collect_progress),
-                    timeout=self.timeout
-                )
+                self.process_deep_think(request, collect_progress)
             )
             
             # Stream progress updates while processing
             last_yielded = 0
-            timeout_counter = 0
-            max_timeout_updates = self.timeout // 10  # Send timeout updates every 10 seconds
             
             while not process_task.done():
                 # Yield any new progress updates
@@ -287,20 +295,6 @@ class DeepThinkOrchestrator:
                     for i in range(last_yielded, len(progress_updates)):
                         yield progress_updates[i]
                     last_yielded = len(progress_updates)
-                    timeout_counter = 0  # Reset timeout counter on progress
-                else:
-                    timeout_counter += 1
-                    # Send periodic status updates if no progress
-                    if timeout_counter % 100 == 0:  # Every 10 seconds (100 * 0.1s)
-                        status_update = ProgressUpdate(
-                            step=self.current_step,
-                            total_steps=self.total_steps,
-                            description=f"Processing... ({timeout_counter//10}s elapsed)",
-                            progress_percent=min(90, (timeout_counter * 100) // max_timeout_updates),
-                            details={"status": "processing", "elapsed_seconds": timeout_counter//10},
-                            timestamp=datetime.now()
-                        )
-                        yield status_update
                 
                 # Small delay to avoid busy waiting
                 await asyncio.sleep(0.1)

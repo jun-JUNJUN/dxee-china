@@ -260,14 +260,31 @@ else:
 
 ## Recommended Fix Strategy
 
-### 1. **Simplify Timeout Handling**
-Remove the complex multi-layer timeout system and implement a simple timeout like the backend:
+### 1. **Simplify Timeout Handling** ✅ **RESOLVED**
+**IMPLEMENTED**: Reduced from 3+ competing timeout layers to just 2 strategic timeout checks:
 ```python
-# Replace complex timeout with simple approach
-if (time.time() - self.start_time) >= self.timeout:
-    logger.warning("Research timeout reached")
-    break
+def _check_timeout(self) -> bool:
+    """Check if research timeout reached - simplified approach like backend"""
+    if hasattr(self, 'start_time') and self.start_time:
+        return (time.time() - self.start_time) >= self.timeout
+    return False
+
+# Layer 1: After query generation and cache lookup
+if self._check_timeout():
+    logger.warning("Research timeout reached after query generation phase")
+    raise asyncio.TimeoutError("Deep-think research timed out after 600 seconds")
+
+# Layer 2: After search and content extraction
+if self._check_timeout():
+    logger.warning("Research timeout reached after search and extraction phase")
+    raise asyncio.TimeoutError("Deep-think research timed out after 600 seconds")
 ```
+
+**Changes Made:**
+- Removed `asyncio.wait_for()` wrapper that caused competing timeouts
+- Reduced from 10 step-by-step checks to 2 strategic checkpoints
+- Simplified `stream_deep_think()` to remove progress monitoring overhead
+- Uses simple time comparison like the successful backend approach
 
 ### 2. **Reduce Processing Steps**
 Combine multiple synthesis steps into fewer operations:
