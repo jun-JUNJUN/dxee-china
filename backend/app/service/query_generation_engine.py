@@ -185,11 +185,11 @@ class QueryGenerationEngine:
             logger.error(f"Question analysis failed: {e}")
             raise
     
-    async def generate_search_queries(self, user_question: str, 
+    async def generate_search_queries(self, user_question: str,
                                     question_analysis: Optional[QuestionAnalysis] = None,
                                     num_queries: Optional[int] = None) -> List[GeneratedQuery]:
         """
-        Generate diverse search queries covering different angles
+        Generate diverse search queries using simple backend approach
         
         Args:
             user_question: The original user question
@@ -198,73 +198,38 @@ class QueryGenerationEngine:
             
         Returns:
             List of GeneratedQuery objects ordered by priority
-            
-        Raises:
-            ValueError: If inputs are invalid
-            Exception: For API or processing errors
         """
         if not user_question or not user_question.strip():
             raise ValueError("Question cannot be empty")
         
         self.generation_count += 1
+        logger.info(f"🧠 Starting simple query generation for: {user_question[:100]}...")
         
         try:
-            # Get question analysis if not provided
+            # Phase 1: Analyze question
             if question_analysis is None:
                 question_analysis = await self.analyze_question(user_question)
             
-            # Determine number of queries to generate
-            if num_queries is None:
-                if question_analysis.complexity == QuestionComplexity.SIMPLE:
-                    num_queries = self.min_queries
-                elif question_analysis.complexity == QuestionComplexity.COMPLEX:
-                    num_queries = self.max_queries
-                else:
-                    num_queries = 4
-            
-            num_queries = max(self.min_queries, min(self.max_queries, num_queries))
-            
-            logger.info(f"Generating {num_queries} queries for {question_analysis.complexity.value} question")
-            
-            # Generate diverse query types
+            # Phase 2: Generate from different perspectives
             queries = []
+            queries.extend(self._generate_factual_queries(user_question, question_analysis))
+            queries.extend(self._generate_comparative_queries(user_question, question_analysis))
+            queries.extend(self._generate_temporal_queries(user_question, question_analysis))
+            queries.extend(self._generate_statistical_queries(user_question, question_analysis))
+            queries.extend(self._generate_expert_queries(user_question, question_analysis))
             
-            # Always include a direct factual query
-            queries.append(self._generate_factual_query(user_question, question_analysis))
+            # Simple deduplication and prioritization
+            unique_queries = self._deduplicate_queries(queries)
+            prioritized = self._prioritize_queries(unique_queries)
             
-            # Add other query types based on question analysis
-            remaining_slots = num_queries - 1
+            # Return limited set
+            max_queries = num_queries or self.max_queries
+            final_queries = prioritized[:max_queries]
             
-            if question_analysis.requires_current_data and remaining_slots > 0:
-                queries.append(self._generate_current_query(user_question, question_analysis))
-                remaining_slots -= 1
-            
-            if remaining_slots > 0:
-                queries.append(self._generate_analytical_query(user_question, question_analysis))
-                remaining_slots -= 1
-            
-            if remaining_slots > 0 and len(question_analysis.entities) > 1:
-                queries.append(self._generate_comparative_query(user_question, question_analysis))
-                remaining_slots -= 1
-            
-            if remaining_slots > 0:
-                queries.append(self._generate_statistical_query(user_question, question_analysis))
-                remaining_slots -= 1
-            
-            # Fill remaining slots with additional queries
-            while remaining_slots > 0 and len(queries) < num_queries:
-                queries.append(self._generate_temporal_query(user_question, question_analysis))
-                remaining_slots -= 1
-            
-            # Sort by priority and add priority numbers
-            queries.sort(key=lambda q: q.priority)
-            for i, query in enumerate(queries):
-                query.priority = i + 1
-            
-            logger.info(f"Generated {len(queries)} queries: {[q.query_type.value for q in queries]}")
+            logger.info(f"📋 Generated {len(final_queries)} unique queries: {[q.query_type.value for q in final_queries]}")
             self.success_count += 1
             
-            return queries
+            return final_queries
             
         except Exception as e:
             self.error_count += 1
@@ -502,6 +467,129 @@ Focus on extracting actionable information for creating effective search queries
             operators={},
             expected_results="Historical information, timelines, and development history"
         )
+    
+    def _generate_factual_queries(self, question: str, analysis: QuestionAnalysis) -> List[GeneratedQuery]:
+        """Generate factual information queries (backend style)"""
+        queries = []
+        topic = ' '.join(analysis.entities[:3]) if analysis.entities else question
+        
+        # Main factual query
+        queries.append(GeneratedQuery(
+            text=topic,
+            query_type=QueryType.FACTUAL,
+            priority=8,
+            reasoning="Direct factual query using main entities",
+            operators={},
+            expected_results="Direct facts and basic information"
+        ))
+        
+        # Definition query if entities present
+        if analysis.entities:
+            queries.append(GeneratedQuery(
+                text=f"what is {topic}",
+                query_type=QueryType.FACTUAL,
+                priority=7,
+                reasoning="Definition query for better understanding",
+                operators={},
+                expected_results="Definitions and explanations"
+            ))
+        
+        return queries
+    
+    def _generate_comparative_queries(self, question: str, analysis: QuestionAnalysis) -> List[GeneratedQuery]:
+        """Generate comparative analysis queries"""
+        queries = []
+        
+        # Look for comparison indicators
+        if "vs" in question or "compare" in question.lower():
+            queries.append(GeneratedQuery(
+                text=f"{question} comparison analysis",
+                query_type=QueryType.COMPARATIVE,
+                priority=9,
+                reasoning="Comparative analysis based on question content",
+                operators={},
+                expected_results="Comparisons and contrasts"
+            ))
+        
+        # Entity-based comparison
+        if len(analysis.entities) >= 2:
+            topic1, topic2 = analysis.entities[0], analysis.entities[1]
+            queries.append(GeneratedQuery(
+                text=f"{topic1} vs {topic2}",
+                query_type=QueryType.COMPARATIVE,
+                priority=8,
+                reasoning="Entity-based comparison query",
+                operators={},
+                expected_results="Direct comparisons between entities"
+            ))
+        
+        return queries
+    
+    def _generate_temporal_queries(self, question: str, analysis: QuestionAnalysis) -> List[GeneratedQuery]:
+        """Generate time-based queries"""
+        queries = []
+        topic = ' '.join(analysis.entities[:2]) if analysis.entities else question
+        
+        # Recent developments
+        queries.append(GeneratedQuery(
+            text=f"latest {topic} 2024 2025",
+            query_type=QueryType.TEMPORAL,
+            priority=7,
+            reasoning="Recent developments and current state",
+            operators={},
+            expected_results="Recent news and updates"
+        ))
+        
+        return queries
+    
+    def _generate_statistical_queries(self, question: str, analysis: QuestionAnalysis) -> List[GeneratedQuery]:
+        """Generate queries for statistical data"""
+        queries = []
+        topic = ' '.join(analysis.entities[:2]) if analysis.entities else question
+        
+        queries.append(GeneratedQuery(
+            text=f"{topic} statistics data numbers",
+            query_type=QueryType.STATISTICAL,
+            priority=8,
+            reasoning="Statistical data and quantitative information",
+            operators={},
+            expected_results="Statistics, data, and quantitative metrics"
+        ))
+        
+        return queries
+    
+    def _generate_expert_queries(self, question: str, analysis: QuestionAnalysis) -> List[GeneratedQuery]:
+        """Generate expert-level queries"""
+        queries = []
+        topic = ' '.join(analysis.entities[:2]) if analysis.entities else question
+        
+        queries.append(GeneratedQuery(
+            text=f"{topic} industry analysis expert opinion",
+            query_type=QueryType.ANALYTICAL,
+            priority=7,
+            reasoning="Expert analysis and industry perspective",
+            operators={},
+            expected_results="Expert analysis and professional insights"
+        ))
+        
+        return queries
+    
+    def _deduplicate_queries(self, queries: List[GeneratedQuery]) -> List[GeneratedQuery]:
+        """Remove duplicate queries based on text similarity"""
+        seen = set()
+        unique = []
+        
+        for query in queries:
+            key = query.text.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                unique.append(query)
+        
+        return unique
+    
+    def _prioritize_queries(self, queries: List[GeneratedQuery]) -> List[GeneratedQuery]:
+        """Sort queries by priority (higher priority first)"""
+        return sorted(queries, key=lambda q: q.priority, reverse=True)
     
     def get_stats(self) -> Dict[str, Any]:
         """Get engine usage statistics"""

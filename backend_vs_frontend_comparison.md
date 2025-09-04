@@ -286,12 +286,32 @@ if self._check_timeout():
 - Simplified `stream_deep_think()` to remove progress monitoring overhead
 - Uses simple time comparison like the successful backend approach
 
-### 2. **Reduce Processing Steps**
-Combine multiple synthesis steps into fewer operations:
+### 2. **Reduce Processing Steps** ✅ **RESOLVED**
+**IMPLEMENTED**: Simplified query generation to match backend's straightforward approach:
 ```python
-# Instead of separate comprehensive + summary generation
-# Generate both in a single API call
+# Phase 1: Analyze question
+if question_analysis is None:
+    question_analysis = await self.analyze_question(user_question)
+
+# Phase 2: Generate from different perspectives
+queries = []
+queries.extend(self._generate_factual_queries(user_question, question_analysis))
+queries.extend(self._generate_comparative_queries(user_question, question_analysis))
+queries.extend(self._generate_temporal_queries(user_question, question_analysis))
+queries.extend(self._generate_statistical_queries(user_question, question_analysis))
+queries.extend(self._generate_expert_queries(user_question, question_analysis))
+
+# Simple deduplication and prioritization
+unique_queries = self._deduplicate_queries(queries)
+prioritized = self._prioritize_queries(unique_queries)
+return prioritized[:max_queries]
 ```
+
+**Changes Made:**
+- Replaced complex conditional query generation logic with simple extend() calls
+- Removed dynamic query count calculation based on complexity
+- Simplified to straightforward: analyze → generate → deduplicate → prioritize → limit
+- Matches the successful backend DeepThinkingEngine pattern exactly
 
 ### 3. **Optimize Cache Operations**
 Make cache operations truly optional and non-blocking:
