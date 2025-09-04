@@ -337,6 +337,80 @@ async def synthesize_complete_response(self, content_analyses: List[ContentAnaly
 - **New Method `_fallback_single_call_synthesis()`**: Fallback when API unavailable
 - **Updated Main Method**: `synthesize_complete_response()` now uses single-call pattern instead of multiple API calls
 - **Eliminated Multi-Step Calls**: No more separate calls for comprehensive answer + summary generation
+### 4. **Optimized Cache Operations** ✅ **RESOLVED**
+**IMPLEMENTED**: Made cache operations truly optional and non-blocking:
+
+```python
+async def _initialize_cache(self):
+    """Initialize MongoDB collections and indexes - non-blocking approach"""
+    try:
+        # Make cache initialization asynchronous and non-blocking
+        asyncio.create_task(self._background_cache_setup())
+        self.current_step = 1
+        logger.info("Cache setup started in background (non-blocking)")
+    except Exception as e:
+        logger.warning(f"Cache setup failed to start: {e}, proceeding without cache")
+
+async def _check_content_cache(self, queries: List[SearchQuery]) -> Tuple[List[ScrapedContent], int, int]:
+    """Check cache for existing content - optimized non-blocking approach"""
+    try:
+        # Make cache checks truly optional and non-blocking with timeout
+        cache_timeout = 5.0  # 5 second timeout for cache operations
+        cache_task = asyncio.create_task(self._perform_cache_lookups(queries))
+        
+        try:
+            cache_results = await asyncio.wait_for(cache_task, timeout=cache_timeout)
+            cached_content, cache_hits, cache_misses = cache_results
+        except asyncio.TimeoutError:
+            logger.warning(f"Cache check timed out after {cache_timeout}s, proceeding without cache")
+            cache_task.cancel()  # Cancel the background task
+            return [], 0, len(queries)
+```
+
+**Changes Made:**
+- **Background Cache Setup**: Cache initialization no longer blocks main processing
+- **Timeout-Protected Operations**: 5-second timeout for cache operations with automatic cancellation
+- **Parallel Cache Lookups**: Concurrent cache queries with semaphore control (max 5)
+- **Simplified Object Creation**: Minimal ScrapedContent objects for cache efficiency
+- **Graceful Degradation**: Continues processing if cache fails or times out
+
+**Performance Impact**: Cache operations no longer block critical path, with automatic fallback.
+
+### 5. **Simplified Error Recovery** ✅ **RESOLVED**
+**IMPLEMENTED**: Replaced complex error recovery with simple fallbacks like backend:
+
+```python
+# Before: Complex error recovery system
+results = await error_recovery.execute_with_recovery(
+    'serper_api', search_with_recovery
+)
+
+# After: Simple error handling like backend
+try:
+    results = await self.serper_client.batch_search(search_requests)
+    
+    # Simple result processing
+    if results:
+        for result in results:
+            if isinstance(result, dict) and result.get('success'):
+                data = result.get('data', {})
+                if 'organic' in data:
+                    search_results.extend(data['organic'])
+                # ... handle other formats
+    
+except Exception as e:
+    logger.warning(f"Search failed: {e}, proceeding without search results")
+    search_results = []  # Continue with empty results
+```
+
+**Changes Made:**
+- **Removed Error Recovery System**: No more `error_recovery.execute_with_recovery()` calls
+- **Simple Try/Catch**: Basic exception handling with graceful degradation
+- **Immediate Fallback**: Continues processing with empty results instead of complex retry mechanisms
+- **Reduced Import Dependencies**: Removed `error_recovery_system` import
+
+**Performance Impact**: Eliminates complex circuit breaker overhead and retry delays.
+
 
 **Performance Impact**: Eliminates ~50% of API calls during synthesis phase, matching backend's efficient approach.
 

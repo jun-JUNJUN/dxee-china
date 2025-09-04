@@ -35,7 +35,7 @@ from .serper_api_client import SerperAPIClient
 from .jan_reasoning_engine import JanReasoningEngine
 from .answer_synthesizer import AnswerSynthesizer
 from .mongodb_service import MongoDBService
-from .error_recovery_system import error_recovery
+# Removed complex error_recovery system - using simple try/catch instead
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -371,13 +371,23 @@ class DeepThinkOrchestrator:
             raise
     
     async def _initialize_cache(self):
-        """Initialize MongoDB collections and indexes"""
+        """Initialize MongoDB collections and indexes - non-blocking approach"""
+        try:
+            # Make cache initialization asynchronous and non-blocking
+            asyncio.create_task(self._background_cache_setup())
+            self.current_step = 1
+            logger.info("Cache setup started in background (non-blocking)")
+        except Exception as e:
+            logger.warning(f"Cache setup failed to start: {e}, proceeding without cache")
+            # Continue without cache - don't fail completely
+    
+    async def _background_cache_setup(self):
+        """Background cache setup that doesn't block main processing"""
         try:
             await self.mongodb_service.create_deepthink_indexes()
-            self.current_step = 1
+            logger.info("✅ Background cache initialization completed")
         except Exception as e:
-            logger.error(f"Cache initialization failed: {e}")
-            # Continue without cache - don't fail completely
+            logger.warning(f"Background cache setup failed: {e}, cache will be disabled")
     
     async def _generate_queries(self, question: str) -> Tuple[QuestionAnalysis, List[SearchQuery]]:
         """Generate search queries for the question"""
@@ -418,49 +428,91 @@ class DeepThinkOrchestrator:
             return None, [fallback_query]
     
     async def _check_content_cache(self, queries: List[SearchQuery]) -> Tuple[List[ScrapedContent], int, int]:
-        """Check cache for existing content"""
+        """Check cache for existing content - optimized non-blocking approach"""
         cached_content = []
         cache_hits = 0
         cache_misses = 0
         
         try:
-            for query in queries:
-                # Search for cached content matching this query
-                content_list = await self.mongodb_service.search_cached_scraped_content(
-                    query.text, limit=5
-                )
-                
-                if content_list:
-                    # Convert dict objects to ScrapedContent objects
-                    for content_dict in content_list:
-                        if isinstance(content_dict, dict):
-                            # Convert dict to ScrapedContent object
-                            content = ScrapedContent(
-                                url=content_dict.get('url', ''),
-                                title=content_dict.get('title', ''),
-                                text_content=content_dict.get('content', ''),  # Note: MongoDB stores as 'content'
-                                markdown_content=content_dict.get('markdown_content', ''),
-                                word_count=content_dict.get('word_count', 0),
-                                extraction_timestamp=content_dict.get('extraction_timestamp', datetime.now()),
-                                metadata=content_dict.get('metadata', {})
-                            )
-                            cached_content.append(content)
-                        elif isinstance(content_dict, ScrapedContent):
-                            # Already a ScrapedContent object
-                            cached_content.append(content_dict)
-                    
-                    cache_hits += len(content_list)
-                    logger.info(f"Cache hit: {len(content_list)} results for '{query.text}'")
-                else:
-                    cache_misses += 1
-                    logger.info(f"Cache miss for '{query.text}'")
+            # Make cache checks truly optional and non-blocking with timeout
+            cache_timeout = 5.0  # 5 second timeout for cache operations
+            
+            # Run cache check in background with timeout
+            cache_task = asyncio.create_task(self._perform_cache_lookups(queries))
+            
+            try:
+                cache_results = await asyncio.wait_for(cache_task, timeout=cache_timeout)
+                cached_content, cache_hits, cache_misses = cache_results
+                logger.info(f"Cache check completed: {cache_hits} hits, {cache_misses} misses")
+            except asyncio.TimeoutError:
+                logger.warning(f"Cache check timed out after {cache_timeout}s, proceeding without cache")
+                cache_task.cancel()  # Cancel the background task
+                return [], 0, len(queries)
             
             self.current_step = 3
             return cached_content, cache_hits, cache_misses
             
         except Exception as e:
-            logger.error(f"Cache check failed: {e}")
+            logger.warning(f"Cache check failed: {e}, proceeding without cache")
             return [], 0, len(queries)
+    
+    async def _perform_cache_lookups(self, queries: List[SearchQuery]) -> Tuple[List[ScrapedContent], int, int]:
+        """Perform actual cache lookups with parallel processing"""
+        cached_content = []
+        cache_hits = 0
+        cache_misses = 0
+        
+        # Create concurrent cache lookup tasks (limit to prevent overload)
+        max_concurrent_cache = min(len(queries), 5)  # Max 5 concurrent cache lookups
+        semaphore = asyncio.Semaphore(max_concurrent_cache)
+        
+        async def lookup_single_query(query: SearchQuery):
+            async with semaphore:
+                try:
+                    content_list = await self.mongodb_service.search_cached_scraped_content(
+                        query.text, limit=3  # Reduce from 5 to 3 for efficiency
+                    )
+                    return query, content_list or []
+                except Exception as e:
+                    logger.debug(f"Cache lookup failed for '{query.text}': {e}")
+                    return query, []
+        
+        # Execute cache lookups in parallel
+        tasks = [lookup_single_query(query) for query in queries]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results efficiently
+        for result in results:
+            if isinstance(result, Exception):
+                cache_misses += 1
+                continue
+                
+            query, content_list = result
+            
+            if content_list:
+                # Simplified object conversion - only convert what's needed
+                for content_dict in content_list:
+                    if isinstance(content_dict, dict):
+                        # Minimal object creation - only essential fields
+                        content = ScrapedContent(
+                            url=content_dict.get('url', ''),
+                            title=content_dict.get('title', ''),
+                            text_content=content_dict.get('content', ''),
+                            markdown_content='',  # Skip markdown for cache efficiency
+                            word_count=content_dict.get('word_count', 0),
+                            extraction_timestamp=datetime.now(),  # Use current time for simplicity
+                            metadata={}  # Skip metadata for efficiency
+                        )
+                        cached_content.append(content)
+                    elif isinstance(content_dict, ScrapedContent):
+                        cached_content.append(content_dict)
+                
+                cache_hits += len(content_list)
+                logger.debug(f"Cache hit: {len(content_list)} results for '{query.text[:30]}...'")
+            else:
+                cache_misses += 1
+        
+        return cached_content, cache_hits, cache_misses
     
     async def _perform_searches(
         self, 
@@ -482,28 +534,27 @@ class DeepThinkOrchestrator:
                     'engine': 'google'
                 })
             
-            # Execute batch search with error recovery
+            # Execute batch search with simple error handling like backend
             if search_requests:
-                async def search_with_recovery():
-                    return await self.serper_client.batch_search(search_requests)
-                
-                results = await error_recovery.execute_with_recovery(
-                    'serper_api', search_with_recovery
-                )
-                
-                # Handle partial failures - extract successful results
-                if results:
-                    for result in results:
-                        if isinstance(result, dict):
-                            if result.get('success') and 'organic' in result.get('data', {}):
-                                search_results.extend(result['data']['organic'])
-                            elif result.get('success') and 'data' in result:
-                                # Handle different response formats
-                                data = result['data']
-                                if isinstance(data, list):
-                                    search_results.extend(data)
-                                elif isinstance(data, dict) and 'results' in data:
+                try:
+                    results = await self.serper_client.batch_search(search_requests)
+                    
+                    # Simple result processing
+                    if results:
+                        for result in results:
+                            if isinstance(result, dict) and result.get('success'):
+                                data = result.get('data', {})
+                                if 'organic' in data:
+                                    search_results.extend(data['organic'])
+                                elif 'results' in data:
                                     search_results.extend(data['results'])
+                                elif isinstance(data, list):
+                                    search_results.extend(data)
+                    
+                except Exception as e:
+                    logger.warning(f"Search failed: {e}, proceeding without search results")
+                    # Continue with empty results - don't fail completely
+                    search_results = []
             
             # Filter out already cached URLs - handle both dict and ScrapedContent cached_content
             cached_urls = set()
