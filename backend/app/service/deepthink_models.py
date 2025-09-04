@@ -174,16 +174,14 @@ class DeepThinkStats:
 
 @dataclass
 class Answer:
-    """Structured answer similar to test file format"""
+    """Synthesized answer - matches test file structure exactly"""
     content: str
     confidence: float
-    sources: List[str] = field(default_factory=list)
-    statistics: Optional[Dict[str, Any]] = None
+    sources: List[str]
+    statistics: Optional[Dict] = None
     gaps: List[str] = field(default_factory=list)
-    versions: List[Dict[str, Any]] = field(default_factory=list)
+    versions: List[Dict] = field(default_factory=list)
     generation_time: float = 0.0
-    key_findings: List[str] = field(default_factory=list)
-    uncertainties: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage/serialization"""
@@ -194,41 +192,23 @@ class Answer:
             'statistics': self.statistics,
             'gaps': self.gaps,
             'versions': self.versions,
-            'generation_time': self.generation_time,
-            'key_findings': self.key_findings,
-            'uncertainties': self.uncertainties
-        }
-
-
-@dataclass
-class Conclusion:
-    """Structured conclusion section"""
-    summary: str
-    confidence_level: str  # high, medium, low
-    limitations: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    further_research: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for storage/serialization"""
-        return {
-            'summary': self.summary,
-            'confidence_level': self.confidence_level,
-            'limitations': self.limitations,
-            'recommendations': self.recommendations,
-            'further_research': self.further_research
+            'generation_time': self.generation_time
         }
 
 
 @dataclass
 class DeepThinkResult:
-    """Model for final deep-think results"""
+    """Model for final deep-think results - similar to ResearchResult from test file"""
     request_id: str
     question: str
-    answer: Answer  # Structured answer object
-    conclusion: Conclusion  # Structured conclusion object
-    comprehensive_answer: str  # Keep for backward compatibility
-    summary_answer: str  # Keep for backward compatibility
+    answer: Answer  # Structured answer object matching test file
+    queries_generated: int
+    sources_analyzed: int
+    cache_hits: int = 0
+    total_duration: float = 0.0
+    # Keep additional fields for backward compatibility and extended functionality
+    comprehensive_answer: str = ""  # Keep for backward compatibility
+    summary_answer: str = ""  # Keep for backward compatibility
     search_queries: List[SearchQuery] = field(default_factory=list)
     scraped_content: List[ScrapedContent] = field(default_factory=list)
     relevance_scores: List[RelevanceScore] = field(default_factory=list)
@@ -236,7 +216,6 @@ class DeepThinkResult:
     confidence_score: float = 0.0
     processing_time: float = 0.0
     total_sources: int = 0
-    cache_hits: int = 0
     cache_misses: int = 0
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -261,7 +240,10 @@ class DeepThinkResult:
             'request_id': self.request_id,
             'question': self.question,
             'answer': self.answer.to_dict() if self.answer else None,
-            'conclusion': self.conclusion.to_dict() if self.conclusion else None,
+            'queries_generated': self.queries_generated,
+            'sources_analyzed': self.sources_analyzed,
+            'cache_hits': self.cache_hits,
+            'total_duration': self.total_duration,
             'comprehensive_answer': self.comprehensive_answer,
             'summary_answer': self.summary_answer,
             'search_queries': [q.to_dict() for q in self.search_queries],
@@ -271,7 +253,6 @@ class DeepThinkResult:
             'confidence_score': self.confidence_score,
             'processing_time': self.processing_time,
             'total_sources': self.total_sources,
-            'cache_hits': self.cache_hits,
             'cache_misses': self.cache_misses,
             'timestamp': self.timestamp,
             'metadata': metadata_dict

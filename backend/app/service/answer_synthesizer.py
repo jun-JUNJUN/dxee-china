@@ -509,10 +509,10 @@ Provide only the summary text, no additional formatting.
         logger.debug(f"Calling DeepSeek API for synthesis (max_tokens: {max_tokens})")
         
         try:
-            response = await self.deepseek_service.chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,  # Moderate creativity for synthesis
-                max_tokens=max_tokens
+            response = await self.deepseek_service.async_chat_completion(
+                query=prompt,
+                system_message="You are a research analyst providing comprehensive answers based on collected data.",
+                search_mode="search"
             )
             return response.get('content', '').strip()
         except Exception as e:

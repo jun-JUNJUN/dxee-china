@@ -9,6 +9,7 @@ import logging
 import json
 import re
 import hashlib
+import asyncio
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -180,10 +181,14 @@ class JanReasoningEngine:
                 analysis_content, user_query, content.url, context_topics
             )
             
-            # Get evaluation from DeepSeek API
+            # Get evaluation from DeepSeek API with improved error handling
             if self.deepseek_service:
-                evaluation_response = await self._call_deepseek_api(evaluation_prompt)
-                parsed_evaluation = self._parse_evaluation_response(evaluation_response)
+                try:
+                    evaluation_response = await self._call_deepseek_api(evaluation_prompt)
+                    parsed_evaluation = self._parse_evaluation_response(evaluation_response)
+                except Exception as e:
+                    logger.warning(f"DeepSeek API failed, using fallback evaluation: {e}")
+                    parsed_evaluation = self._fallback_evaluation(analysis_content, user_query, content)
             else:
                 # Fallback to rule-based evaluation
                 logger.warning("DeepSeek service not available, using fallback evaluation")
@@ -372,22 +377,37 @@ Use Jan-style deep analysis: examine premises, evaluate evidence strength, consi
 """
     
     async def _call_deepseek_api(self, prompt: str) -> str:
-        """Call DeepSeek API for reasoning evaluation"""
+        """Call DeepSeek API for reasoning evaluation with improved error handling"""
         if not self.deepseek_service:
             raise Exception("DeepSeek service not available")
         
-        logger.debug("Calling DeepSeek API for Jan-style reasoning evaluation")
+        logger.info("Calling DeepSeek API for Jan-style reasoning evaluation")
         
         try:
-            response = await self.deepseek_service.chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,  # Low temperature for consistent reasoning
-                max_tokens=1500
+            # Add timeout wrapper for the API call
+            response = await asyncio.wait_for(
+                self.deepseek_service.async_chat_completion(
+                    query=prompt,
+                    system_message="You are a reasoning expert that analyzes content for logical consistency and relevance.",
+                    search_mode="search",
+                    max_retries=3  # Reduce retries to prevent long waits
+                ),
+                timeout=60.0  # 60 second timeout per API call
             )
             return response.get('content', '')
+        except asyncio.TimeoutError:
+            logger.error("DeepSeek API call timed out after 60 seconds")
+            raise Exception("API call timeout - using fallback evaluation")
         except Exception as e:
-            logger.error(f"DeepSeek API call failed: {e}")
-            raise
+            error_msg = str(e)
+            logger.error(f"DeepSeek API call failed: {error_msg}")
+            
+            # Check for specific connection errors
+            if "nodename nor servname provided" in error_msg or "Connection error" in error_msg:
+                logger.error("DNS/Connection error detected - API endpoint may be misconfigured")
+                raise Exception("Connection error - check DEEPSEEK_API_URL environment variable")
+            
+            raise Exception(f"API call failed: {error_msg}")
     
     def _parse_evaluation_response(self, response: str) -> Dict[str, Any]:
         """Parse JSON response from DeepSeek API"""
@@ -509,13 +529,13 @@ Use Jan-style deep analysis: examine premises, evaluate evidence strength, consi
             avg_confidence = sum(a.confidence for a in analyses) / len(analyses)
             
             return ReasoningChain(
-                chain_id=chain_id,
                 premise=premise,
-                evidence=evidence,
+                reasoning=f"Analysis of {len(content_analyses)} sources with {reasoning_type.value} reasoning",
                 conclusion=conclusion,
                 confidence=avg_confidence,
-                source_urls=source_urls,
-                contradictions=[]
+                supporting_evidence=evidence,
+                logical_steps=[f"Step {i+1}: {step}" for i, step in enumerate(evidence[:3])],
+                source_urls=source_urls
             )
             
         except Exception as e:

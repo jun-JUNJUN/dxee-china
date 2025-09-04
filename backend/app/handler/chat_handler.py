@@ -769,14 +769,34 @@ class ChatStreamHandler(tornado.web.RequestHandler):
     async def _handle_deepthink_research(self, message: str, chat_id: str, user_id: str, message_id: str, stream_queue):
         """Handle deep-think research mode with new orchestrator and streaming progress"""
         try:
-            # Get Serper API key from environment
+            # Validate environment configuration first
+            validation_errors = []
+            
+            # Check Serper API key
             serper_api_key = os.environ.get('SERPER_API_KEY')
             if not serper_api_key:
-                error_msg = "Serper API key not configured. Please set SERPER_API_KEY environment variable."
+                validation_errors.append("SERPER_API_KEY not configured")
+            
+            # Check DeepSeek API key
+            deepseek_api_key = os.environ.get('DEEPSEEK_API_KEY')
+            if not deepseek_api_key:
+                validation_errors.append("DEEPSEEK_API_KEY not configured")
+            
+            # Check DeepSeek API URL
+            deepseek_api_url = os.environ.get('DEEPSEEK_API_URL', 'https://api.deepseek.com')
+            if not deepseek_api_url.startswith(('http://', 'https://')):
+                validation_errors.append("DEEPSEEK_API_URL is malformed")
+            
+            if validation_errors:
+                error_msg = f"Configuration errors: {', '.join(validation_errors)}. Please check your environment variables."
                 logger.error(error_msg)
                 self.write(f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n")
                 await self.flush()
                 return
+            
+            # Send configuration validation success
+            self.write(f"data: {json.dumps({'type': 'deepthink_progress', 'step': 0, 'total_steps': 10, 'description': '✅ Configuration validated', 'progress': 5})}\n\n")
+            await self.flush()
             
             # Initialize the deep-think orchestrator
             orchestrator = DeepThinkOrchestrator(
@@ -805,24 +825,93 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                         # Final result
                         result = progress_update.details.get('result')
                         if result:
-                            # Format the result for chat interface
-                            # Build markdown response directly
+                            # Format the result for chat interface using structured Answer object
                             confidence = result.get('confidence_score', 0.0)
                             confidence_emoji = "🟢" if confidence >= 0.8 else "🟡" if confidence >= 0.6 else "🔴"
                             
-                            formatted_parts = [
-                                f"**Deep Think Research Result** {confidence_emoji}",
-                                "",
-                                "## 📋 Summary",
-                                result.get('summary_answer', result.get('summary', 'No summary available')),
-                                "",
-                                "<details>",
-                                "<summary><strong>📚 Comprehensive Analysis (Click to expand)</strong></summary>",
-                                "",
-                                result.get('comprehensive_answer', 'No comprehensive answer available'),
-                                "</details>",
-                                ""
-                            ]
+                            # Check if we have structured Answer object (matching test file)
+                            answer_obj = result.get('answer')
+                            
+                            if answer_obj:
+                                # Use structured format matching test file Answer structure
+                                formatted_parts = [
+                                    f"**Deep Think Research Result** {confidence_emoji}",
+                                    "",
+                                    "## 📋 Answer",
+                                    answer_obj.get('content', 'No answer content available'),
+                                    "",
+                                    f"**Confidence:** {answer_obj.get('confidence', 0.0):.1%}",
+                                    ""
+                                ]
+                                
+                                # Add statistics if available
+                                if answer_obj.get('statistics'):
+                                    stats = answer_obj['statistics']
+                                    formatted_parts.extend([
+                                        "### 📊 Research Statistics",
+                                        ""
+                                    ])
+                                    if 'sources_analyzed' in stats:
+                                        formatted_parts.append(f"• Sources analyzed: {stats['sources_analyzed']}")
+                                    if 'high_relevance_sources' in stats:
+                                        formatted_parts.append(f"• High relevance sources: {stats['high_relevance_sources']}")
+                                    if 'reasoning_chains_used' in stats:
+                                        formatted_parts.append(f"• Reasoning chains: {stats['reasoning_chains_used']}")
+                                    formatted_parts.append("")
+                                
+                                # Add gaps if available
+                                if answer_obj.get('gaps'):
+                                    formatted_parts.extend([
+                                        "### ⚠️ Information Gaps",
+                                        ""
+                                    ])
+                                    for gap in answer_obj['gaps'][:3]:
+                                        formatted_parts.append(f"• {gap}")
+                                    formatted_parts.append("")
+                                
+                                # Add Conclusion section - use summary_answer as conclusion
+                                if result.get('summary_answer'):
+                                    formatted_parts.extend([
+                                        "## 🎯 Conclusion",
+                                        result.get('summary_answer', 'No conclusion available'),
+                                        ""
+                                    ])
+                                
+                                # Add expandable comprehensive analysis
+                                formatted_parts.extend([
+                                    "<details>",
+                                    "<summary><strong>📚 Detailed Analysis (Click to expand)</strong></summary>",
+                                    "",
+                                    result.get('comprehensive_answer', answer_obj.get('content', 'No detailed analysis available')),
+                                    "</details>",
+                                    ""
+                                ])
+                                
+                                # Add source information
+                                if answer_obj.get('sources'):
+                                    formatted_parts.extend([
+                                        "### 📖 Top Sources",
+                                        ""
+                                    ])
+                                    for i, source in enumerate(answer_obj['sources'][:5], 1):
+                                        formatted_parts.append(f"{i}. {source}")
+                                    formatted_parts.append("")
+                                
+                            else:
+                                # Fallback to old format if structured objects not available
+                                formatted_parts = [
+                                    f"**Deep Think Research Result** {confidence_emoji}",
+                                    "",
+                                    "## 📋 Summary",
+                                    result.get('summary_answer', result.get('summary', 'No summary available')),
+                                    "",
+                                    "<details>",
+                                    "<summary><strong>📚 Comprehensive Analysis (Click to expand)</strong></summary>",
+                                    "",
+                                    result.get('comprehensive_answer', 'No comprehensive answer available'),
+                                    "</details>",
+                                    ""
+                                ]
                             
                             # Add metadata if available
                             if 'total_sources' in result:
@@ -890,13 +979,62 @@ class ChatStreamHandler(tornado.web.RequestHandler):
             except asyncio.TimeoutError:
                 timeout_error = f"Deep-think research timed out after {request.timeout_seconds} seconds"
                 logger.error(timeout_error)
-                self.write(f"data: {json.dumps({'type': 'error', 'content': timeout_error})}\n\n")
+                
+                # Provide helpful suggestions for timeout
+                timeout_details = {
+                    'type': 'error',
+                    'content': f"{timeout_error}\n\nThis usually happens when:\n"
+                              "• API connections are slow or failing\n"
+                              "• The research topic requires extensive analysis\n"
+                              "• Network connectivity issues\n\n"
+                              "💡 Try: Simplifying your question or checking your internet connection",
+                    'error_type': 'timeout',
+                    'timeout_seconds': request.timeout_seconds
+                }
+                self.write(f"data: {json.dumps(timeout_details)}\n\n")
                 await self.flush()
+                
             except Exception as e:
-                error_msg = f"Deep-think processing error: {str(e)}"
-                logger.error(error_msg)
+                error_msg = str(e)
+                logger.error(f"Deep-think processing error: {error_msg}")
                 logger.error(traceback.format_exc())
-                self.write(f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n")
+                
+                # Provide specific error handling
+                if "Connection error" in error_msg or "nodename nor servname" in error_msg:
+                    friendly_error = {
+                        'type': 'error',
+                        'content': "🔌 Connection Error: Cannot reach DeepSeek API\n\n"
+                                  "This usually means:\n"
+                                  "• API endpoint configuration is wrong\n"
+                                  "• Network connectivity issues\n"
+                                  "• DNS resolution problems\n\n"
+                                  "💡 Try: Check your DEEPSEEK_API_URL environment variable",
+                        'error_type': 'connection',
+                        'technical_details': error_msg
+                    }
+                elif "timeout" in error_msg.lower():
+                    friendly_error = {
+                        'type': 'error',
+                        'content': "⏱️ Request Timeout: API calls are taking too long\n\n"
+                                  "This could be due to:\n"
+                                  "• Slow network connection\n"
+                                  "• API service overload\n"
+                                  "• Complex research query\n\n"
+                                  "💡 Try: Simplifying your question or trying again later",
+                        'error_type': 'timeout',
+                        'technical_details': error_msg
+                    }
+                else:
+                    friendly_error = {
+                        'type': 'error',
+                        'content': f"⚠️ Processing Error: {error_msg}\n\n"
+                                  "An unexpected error occurred during research.\n"
+                                  "Please try again or check the logs for more details.",
+                        'error_type': 'processing',
+                        'technical_details': error_msg
+                    }
+                
+                self.write(f"data: {json.dumps(friendly_error)}\n\n")
                 await self.flush()
                 
         except Exception as e:

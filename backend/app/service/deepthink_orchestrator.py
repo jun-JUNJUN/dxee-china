@@ -28,7 +28,7 @@ from dataclasses import asdict
 from .deepthink_models import (
     DeepThinkRequest, DeepThinkResult, SearchQuery, ScrapedContent,
     RelevanceScore, ReasoningChain, ProgressUpdate, DeepThinkStats,
-    Answer, Conclusion
+    Answer
 )
 from .query_generation_engine import QueryGenerationEngine, QuestionAnalysis
 from .serper_api_client import SerperAPIClient
@@ -268,7 +268,7 @@ class DeepThinkOrchestrator:
             progress_updates.append(update)
         
         try:
-            # Start processing
+            # Start processing with improved timeout handling
             process_task = asyncio.create_task(
                 asyncio.wait_for(
                     self.process_deep_think(request, collect_progress),
@@ -278,12 +278,29 @@ class DeepThinkOrchestrator:
             
             # Stream progress updates while processing
             last_yielded = 0
+            timeout_counter = 0
+            max_timeout_updates = self.timeout // 10  # Send timeout updates every 10 seconds
+            
             while not process_task.done():
                 # Yield any new progress updates
                 if len(progress_updates) > last_yielded:
                     for i in range(last_yielded, len(progress_updates)):
                         yield progress_updates[i]
                     last_yielded = len(progress_updates)
+                    timeout_counter = 0  # Reset timeout counter on progress
+                else:
+                    timeout_counter += 1
+                    # Send periodic status updates if no progress
+                    if timeout_counter % 100 == 0:  # Every 10 seconds (100 * 0.1s)
+                        status_update = ProgressUpdate(
+                            step=self.current_step,
+                            total_steps=self.total_steps,
+                            description=f"Processing... ({timeout_counter//10}s elapsed)",
+                            progress_percent=min(90, (timeout_counter * 100) // max_timeout_updates),
+                            details={"status": "processing", "elapsed_seconds": timeout_counter//10},
+                            timestamp=datetime.now()
+                        )
+                        yield status_update
                 
                 # Small delay to avoid busy waiting
                 await asyncio.sleep(0.1)
@@ -307,14 +324,53 @@ class DeepThinkOrchestrator:
             )
             yield final_update
             
+        except asyncio.TimeoutError:
+            # Handle timeout gracefully
+            timeout_error = f"Deep-think research timed out after {self.timeout} seconds"
+            logger.error(timeout_error)
+            
+            timeout_update = ProgressUpdate(
+                step=self.current_step,
+                total_steps=self.total_steps,
+                description="Timeout - research taking too long",
+                progress_percent=0,
+                details={
+                    "error": timeout_error,
+                    "type": "TimeoutError",
+                    "timeout_seconds": self.timeout,
+                    "suggestion": "Try reducing research scope or check API connectivity"
+                },
+                timestamp=datetime.now()
+            )
+            yield timeout_update
+            raise
+            
         except Exception as e:
-            # Yield error update
+            # Handle other errors
+            error_msg = str(e)
+            logger.error(f"Deep-think processing failed: {error_msg}")
+            
+            # Provide specific error handling for connection issues
+            if "Connection error" in error_msg or "nodename nor servname" in error_msg:
+                error_description = "API connection failed - check network and configuration"
+                suggestion = "Check DEEPSEEK_API_URL environment variable and internet connection"
+            elif "timeout" in error_msg.lower():
+                error_description = "API requests are timing out"
+                suggestion = "Try again later or check API service status"
+            else:
+                error_description = f"Processing error: {error_msg}"
+                suggestion = "Check logs for more details"
+            
             error_update = ProgressUpdate(
                 step=self.current_step,
                 total_steps=self.total_steps,
-                description=f"Error: {str(e)}",
+                description=error_description,
                 progress_percent=0,
-                details={"error": str(e), "type": type(e).__name__},
+                details={
+                    "error": error_msg,
+                    "type": type(e).__name__,
+                    "suggestion": suggestion
+                },
                 timestamp=datetime.now()
             )
             yield error_update
@@ -870,7 +926,7 @@ class DeepThinkOrchestrator:
         cache_misses: int,
         start_time: float
     ) -> DeepThinkResult:
-        """Format the final deep-think result"""
+        """Format the final deep-think result to match test file structure"""
         
         processing_time = time.time() - start_time
         content_only = [content for content, _ in relevant_content]
@@ -880,16 +936,12 @@ class DeepThinkOrchestrator:
         # Extract data from synthesized response if available
         synthesized_response = getattr(self, '_current_synthesized_response', None)
         
-        # Create structured Answer object
+        # Create Answer object matching test file format exactly
         sources = [content.url for content in content_only[:10]]  # Top 10 sources
-        key_findings = []
-        uncertainties = []
         gaps = []
         statistics = {}
         
         if synthesized_response:
-            key_findings = synthesized_response.key_findings
-            uncertainties = synthesized_response.uncertainties
             statistics = {
                 'sources_analyzed': synthesized_response.sources_analyzed,
                 'high_relevance_sources': synthesized_response.high_relevance_sources,
@@ -897,19 +949,20 @@ class DeepThinkOrchestrator:
                 'synthesis_time': synthesized_response.synthesis_time
             }
             # Extract potential gaps from uncertainties
-            gaps = [f"Need more information about: {uncertainty}" for uncertainty in uncertainties[:3]]
+            gaps = [f"Need more information about: {uncertainty}" for uncertainty in synthesized_response.uncertainties[:3]]
         else:
-            # Fallback: extract key findings from relevance scores
-            key_findings = []
-            for score in scores_only[:5]:
-                if score.key_points:
-                    key_findings.extend(score.key_points[:2])
+            # Fallback statistics
+            statistics = {
+                'sources_analyzed': len(content_only),
+                'reasoning_chains_used': len(reasoning_chains),
+                'processing_time': processing_time
+            }
         
         answer = Answer(
             content=comprehensive_answer,
             confidence=confidence_score,
             sources=sources,
-            statistics=statistics if statistics else None,
+            statistics=statistics,
             gaps=gaps,
             versions=[{
                 'version': 1,
@@ -917,51 +970,20 @@ class DeepThinkOrchestrator:
                 'timestamp': datetime.now().isoformat(),
                 'confidence': confidence_score
             }],
-            generation_time=processing_time,
-            key_findings=key_findings,
-            uncertainties=uncertainties
-        )
-        
-        # Create structured Conclusion object
-        confidence_level = "high" if confidence_score >= 0.8 else "medium" if confidence_score >= 0.6 else "low"
-        limitations = []
-        recommendations = []
-        further_research = []
-        
-        # Generate limitations based on available data
-        if len(content_only) < 3:
-            limitations.append("Limited number of sources available for analysis")
-        if confidence_score < 0.7:
-            limitations.append("Some information may be incomplete or uncertain")
-        if not reasoning_chains:
-            limitations.append("Limited reasoning chains available for validation")
-        
-        # Generate recommendations based on question analysis
-        if question_analysis and hasattr(question_analysis, 'question_type'):
-            if question_analysis.question_type in ['how', 'implementation']:
-                recommendations.append("Consider consulting primary sources or experts for implementation details")
-            elif question_analysis.question_type in ['comparison', 'evaluation']:
-                recommendations.append("Review multiple perspectives before making final decisions")
-        
-        # Suggest further research based on gaps and uncertainties
-        for uncertainty in uncertainties[:2]:
-            further_research.append(f"Research needed on: {uncertainty}")
-        
-        conclusion = Conclusion(
-            summary=summary_answer,
-            confidence_level=confidence_level,
-            limitations=limitations,
-            recommendations=recommendations,
-            further_research=further_research
+            generation_time=processing_time
         )
         
         result = DeepThinkResult(
             request_id=request.request_id,
             question=request.question,
             answer=answer,
-            conclusion=conclusion,
-            comprehensive_answer=comprehensive_answer,  # Keep for backward compatibility
-            summary_answer=summary_answer,  # Keep for backward compatibility
+            queries_generated=len(search_queries),
+            sources_analyzed=len(content_only),
+            cache_hits=cache_hits,
+            total_duration=processing_time,
+            # Keep backward compatibility fields
+            comprehensive_answer=comprehensive_answer,
+            summary_answer=summary_answer,
             search_queries=search_queries,
             scraped_content=content_only,
             relevance_scores=scores_only,
@@ -969,7 +991,6 @@ class DeepThinkOrchestrator:
             confidence_score=confidence_score,
             processing_time=processing_time,
             total_sources=len(content_only),
-            cache_hits=cache_hits,
             cache_misses=cache_misses,
             timestamp=datetime.now(),
             metadata={
