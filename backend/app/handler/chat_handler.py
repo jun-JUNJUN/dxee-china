@@ -767,7 +767,7 @@ class ChatStreamHandler(tornado.web.RequestHandler):
             await self.flush()
     
     async def _handle_deepthink_research(self, message: str, chat_id: str, user_id: str, message_id: str, stream_queue):
-        """Handle deep-think research mode with new orchestrator and streaming progress"""
+        """Handle deep-think research mode with background processing that continues even if client disconnects"""
         try:
             # Validate environment configuration first
             validation_errors = []
@@ -818,153 +818,15 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                 timeout_seconds=int(os.environ.get('DEEPSEEK_RESEARCH_TIMEOUT', 600))
             )
             
-            # Stream the deep-think process
+            # Start deep-think as background task that continues even if client disconnects
+            import asyncio
+            asyncio.create_task(self._background_deepthink_process(orchestrator, request, chat_id, user_id, message_id))
+            
+            # Stream progress updates to client for as long as they're connected (but not final result)
             try:
                 async for progress_update in orchestrator.stream_deep_think(request):
-                    if progress_update.step == orchestrator.total_steps:
-                        # Final result
-                        result = progress_update.details.get('result')
-                        if result:
-                            # Format the result for chat interface using structured Answer object
-                            confidence = result.get('confidence_score', 0.0)
-                            confidence_emoji = "🟢" if confidence >= 0.8 else "🟡" if confidence >= 0.6 else "🔴"
-                            
-                            # Check if we have structured Answer object (matching test file)
-                            answer_obj = result.get('answer')
-                            
-                            if answer_obj:
-                                # Use structured format matching test file Answer structure
-                                formatted_parts = [
-                                    f"**Deep Think Research Result** {confidence_emoji}",
-                                    "",
-                                    "## 📋 Answer",
-                                    answer_obj.get('content', 'No answer content available'),
-                                    "",
-                                    f"**Confidence:** {answer_obj.get('confidence', 0.0):.1%}",
-                                    ""
-                                ]
-                                
-                                # Add statistics if available
-                                if answer_obj.get('statistics'):
-                                    stats = answer_obj['statistics']
-                                    formatted_parts.extend([
-                                        "### 📊 Research Statistics",
-                                        ""
-                                    ])
-                                    if 'sources_analyzed' in stats:
-                                        formatted_parts.append(f"• Sources analyzed: {stats['sources_analyzed']}")
-                                    if 'high_relevance_sources' in stats:
-                                        formatted_parts.append(f"• High relevance sources: {stats['high_relevance_sources']}")
-                                    if 'reasoning_chains_used' in stats:
-                                        formatted_parts.append(f"• Reasoning chains: {stats['reasoning_chains_used']}")
-                                    formatted_parts.append("")
-                                
-                                # Add gaps if available
-                                if answer_obj.get('gaps'):
-                                    formatted_parts.extend([
-                                        "### ⚠️ Information Gaps",
-                                        ""
-                                    ])
-                                    for gap in answer_obj['gaps'][:3]:
-                                        formatted_parts.append(f"• {gap}")
-                                    formatted_parts.append("")
-                                
-                                # Add Conclusion section - use summary_answer as conclusion
-                                if result.get('summary_answer'):
-                                    formatted_parts.extend([
-                                        "## 🎯 Conclusion",
-                                        result.get('summary_answer', 'No conclusion available'),
-                                        ""
-                                    ])
-                                
-                                # Add expandable comprehensive analysis
-                                formatted_parts.extend([
-                                    "<details>",
-                                    "<summary><strong>📚 Detailed Analysis (Click to expand)</strong></summary>",
-                                    "",
-                                    result.get('comprehensive_answer', answer_obj.get('content', 'No detailed analysis available')),
-                                    "</details>",
-                                    ""
-                                ])
-                                
-                                # Add source information
-                                if answer_obj.get('sources'):
-                                    formatted_parts.extend([
-                                        "### 📖 Top Sources",
-                                        ""
-                                    ])
-                                    for i, source in enumerate(answer_obj['sources'][:5], 1):
-                                        formatted_parts.append(f"{i}. {source}")
-                                    formatted_parts.append("")
-                                
-                            else:
-                                # Fallback to old format if structured objects not available
-                                formatted_parts = [
-                                    f"**Deep Think Research Result** {confidence_emoji}",
-                                    "",
-                                    "## 📋 Summary",
-                                    result.get('summary_answer', result.get('summary', 'No summary available')),
-                                    "",
-                                    "<details>",
-                                    "<summary><strong>📚 Comprehensive Analysis (Click to expand)</strong></summary>",
-                                    "",
-                                    result.get('comprehensive_answer', 'No comprehensive answer available'),
-                                    "</details>",
-                                    ""
-                                ]
-                            
-                            # Add metadata if available
-                            if 'total_sources' in result:
-                                formatted_parts.append(f"*Sources analyzed: {result['total_sources']}*")
-                            if 'processing_time' in result:
-                                formatted_parts.append(f"*Processing time: {result['processing_time']:.1f}s*")
-                            
-                            formatted_response = "\n".join(formatted_parts)
-                            
-                            # Stream the formatted response word by word
-                            words = formatted_response.split()
-                            accumulated_content = ""
-                            
-                            for i, word in enumerate(words):
-                                accumulated_content += word + " "
-                                
-                                # Send chunks of 3-5 words at a time
-                                if i % 4 == 0 and i > 0:
-                                    chunk_content = " ".join(words[max(0, i-3):i+1])
-                                    self.write(f"data: {json.dumps({'type': 'chunk', 'content': chunk_content + ' ', 'chat_id': chat_id, 'message_id': message_id})}\n\n")
-                                    await self.flush()
-                                    await asyncio.sleep(0.03)  # Small delay for realistic streaming
-                            
-                            # Send final completion - serialize result properly
-                            result_dict = result.to_dict() if hasattr(result, 'to_dict') else result
-                            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'deepthink_result': result_dict}, cls=MongoJSONEncoder)}\n\n")
-                            await self.flush()
-                            
-                            # Store the complete AI response in MongoDB
-                            response_doc = {
-                                'message_id': str(uuid.uuid4()),
-                                'chat_id': chat_id,
-                                'user_id': user_id,
-                                'message': accumulated_content.strip(),
-                                'timestamp': datetime.utcnow(),
-                                'type': 'assistant',
-                                'search_results': result.get('scraped_content', []),
-                                'deepthink_data': result,  # Store full deep-think data
-                                'shared': False
-                            }
-                            
-                            try:
-                                await self.application.mongodb.create_message(response_doc)
-                                logger.info(f"Deep-think response stored successfully for chat_id: {chat_id}")
-                            except Exception as e:
-                                logger.error(f"Error storing deep-think response: {e}")
-                        else:
-                            # No result in final update - handle error
-                            error_detail = progress_update.details.get('error', 'Unknown error')
-                            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Deep-think failed: {error_detail}'})}\n\n")
-                            await self.flush()
-                    else:
-                        # Progress update
+                    if progress_update.step < orchestrator.total_steps:
+                        # Only stream progress updates, not final result (handled by background task)
                         progress_data = {
                             'type': 'deepthink_progress',
                             'step': progress_update.step,
@@ -975,75 +837,190 @@ class ChatStreamHandler(tornado.web.RequestHandler):
                         }
                         self.write(f"data: {json.dumps(progress_data, cls=MongoJSONEncoder)}\n\n")
                         await self.flush()
+                    else:
+                        # Final step reached - background task will handle storage and completion
+                        self.write(f"data: {json.dumps({'type': 'deepthink_progress', 'step': progress_update.step, 'total_steps': progress_update.total_steps, 'description': '✅ Analysis complete - results saved to chat history', 'progress': 100})}\n\n")
+                        await self.flush()
+                        break
                         
             except asyncio.TimeoutError:
-                timeout_error = f"Deep-think research timed out after {request.timeout_seconds} seconds"
-                logger.error(timeout_error)
-                
-                # Provide helpful suggestions for timeout
+                # Client connection timeout - background task continues
+                logger.info(f"⏰ Client connection timed out for deep-think, but background processing continues for chat_id: {chat_id}")
                 timeout_details = {
-                    'type': 'error',
-                    'content': f"{timeout_error}\n\nThis usually happens when:\n"
-                              "• API connections are slow or failing\n"
-                              "• The research topic requires extensive analysis\n"
-                              "• Network connectivity issues\n\n"
-                              "💡 Try: Simplifying your question or checking your internet connection",
-                    'error_type': 'timeout',
+                    'type': 'info',
+                    'content': "🕐 Deep-think analysis is taking longer than expected.\n\n"
+                              "✅ **Your analysis is continuing in the background.**\n"
+                              "📱 You can safely close this page - results will be saved to your chat history.\n"
+                              "🔄 Refresh the page in a few minutes to see the completed analysis.",
                     'timeout_seconds': request.timeout_seconds
                 }
                 self.write(f"data: {json.dumps(timeout_details)}\n\n")
                 await self.flush()
                 
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(f"Deep-think processing error: {error_msg}")
-                logger.error(traceback.format_exc())
+        except Exception as e:
+            logger.error(f"Deep-think setup error: {e}")
+            logger.error(traceback.format_exc())
+            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Deep-think setup failed: {str(e)}'})}\n\n")
+            await self.flush()
+
+    async def _background_deepthink_process(self, orchestrator, request, chat_id: str, user_id: str, message_id: str):
+        """
+        Background process that ensures deep-think completes and saves to MongoDB
+        even if client disconnects
+        """
+        try:
+            logger.info(f"🔄 Starting background deep-think process for chat_id: {chat_id}")
+            
+            # Process the deep-think request completely
+            final_result = None
+            async for progress_update in orchestrator.stream_deep_think(request):
+                if progress_update.step == orchestrator.total_steps:
+                    final_result = progress_update.details.get('result')
+                    break
+            
+            if final_result:
+                # Format the result for storage
+                confidence = final_result.get('confidence_score', 0.0)
+                confidence_emoji = "🟢" if confidence >= 0.8 else "🟡" if confidence >= 0.6 else "🔴"
                 
-                # Provide specific error handling
-                if "Connection error" in error_msg or "nodename nor servname" in error_msg:
-                    friendly_error = {
-                        'type': 'error',
-                        'content': "🔌 Connection Error: Cannot reach DeepSeek API\n\n"
-                                  "This usually means:\n"
-                                  "• API endpoint configuration is wrong\n"
-                                  "• Network connectivity issues\n"
-                                  "• DNS resolution problems\n\n"
-                                  "💡 Try: Check your DEEPSEEK_API_URL environment variable",
-                        'error_type': 'connection',
-                        'technical_details': error_msg
+                # Check if we have structured Answer object
+                answer_obj = final_result.get('answer')
+                
+                if answer_obj:
+                    # Use structured format matching test file Answer structure
+                    formatted_parts = [
+                        f"**Deep Think Research Result** {confidence_emoji}",
+                        "",
+                        "## 📋 Answer",
+                        answer_obj.get('content', 'No answer content available'),
+                        "",
+                        f"**Confidence:** {answer_obj.get('confidence', 0.0):.1%}",
+                        ""
+                    ]
+                    
+                    # Add statistics if available
+                    if answer_obj.get('statistics'):
+                        stats = answer_obj['statistics']
+                        formatted_parts.extend([
+                            "## 📊 Research Statistics",
+                            f"- **Sources analyzed:** {stats.get('sources_count', 0)}",
+                            f"- **Key topics:** {', '.join(stats.get('key_topics', []))}",
+                            f"- **Research depth:** {stats.get('depth_level', 'Standard')}",
+                            ""
+                        ])
+                    
+                    # Add processing time if available
+                    if final_result.get('processing_time'):
+                        formatted_parts.append(f"*Processing time: {final_result['processing_time']:.1f}s*")
+                    
+                    formatted_response = "\n".join(formatted_parts)
+                    
+                    # Store the complete AI response in MongoDB
+                    response_doc = {
+                        'message_id': str(uuid.uuid4()),
+                        'chat_id': chat_id,
+                        'user_id': user_id,
+                        'message': formatted_response,
+                        'timestamp': datetime.utcnow(),
+                        'type': 'assistant',
+                        'search_results': final_result.get('scraped_content', []),
+                        'deepthink_data': final_result,  # Store full deep-think data
+                        'shared': False,
+                        'deepthink_completed': True  # Mark as completed background task
                     }
-                elif "timeout" in error_msg.lower():
-                    friendly_error = {
-                        'type': 'error',
-                        'content': "⏱️ Request Timeout: API calls are taking too long\n\n"
-                                  "This could be due to:\n"
-                                  "• Slow network connection\n"
-                                  "• API service overload\n"
-                                  "• Complex research query\n\n"
-                                  "💡 Try: Simplifying your question or trying again later",
-                        'error_type': 'timeout',
-                        'technical_details': error_msg
-                    }
+                    
+                    try:
+                        await self.application.mongodb.create_message(response_doc)
+                        logger.info(f"✅ Background deep-think response stored successfully for chat_id: {chat_id}")
+                    except Exception as e:
+                        logger.error(f"❌ Error storing background deep-think response: {e}")
                 else:
-                    friendly_error = {
-                        'type': 'error',
-                        'content': f"⚠️ Processing Error: {error_msg}\n\n"
-                                  "An unexpected error occurred during research.\n"
-                                  "Please try again or check the logs for more details.",
-                        'error_type': 'processing',
-                        'technical_details': error_msg
-                    }
-                
-                self.write(f"data: {json.dumps(friendly_error)}\n\n")
-                await self.flush()
+                    logger.warning(f"⚠️ Background deep-think completed but no structured answer found for chat_id: {chat_id}")
+            else:
+                logger.error(f"❌ Background deep-think failed to produce result for chat_id: {chat_id}")
                 
         except Exception as e:
-            logger.error(f"Error in deep-think research: {e}")
-            logger.error(traceback.format_exc())
+            logger.error(f"❌ Background deep-think process failed for chat_id: {chat_id}: {e}")
+                        # Final result
+                        
+    async def _background_deepthink_process(self, orchestrator, request, chat_id: str, user_id: str, message_id: str):
+        """
+        Background process that ensures deep-think completes and saves to MongoDB 
+        even if client disconnects
+        """
+        try:
+            logger.info(f"🔄 Starting background deep-think process for chat_id: {chat_id}")
             
-            # Send error to client
-            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Deep-think error: {str(e)}'})}\n\n")
-            await self.flush()
+            # Process the deep-think request completely
+            final_result = None
+            async for progress_update in orchestrator.stream_deep_think(request):
+                if progress_update.step == orchestrator.total_steps:
+                    final_result = progress_update.details.get('result')
+                    break
+            
+            if final_result:
+                # Format the result for storage
+                confidence = final_result.get('confidence_score', 0.0)
+                confidence_emoji = "🟢" if confidence >= 0.8 else "🟡" if confidence >= 0.6 else "🔴"
+                
+                # Check if we have structured Answer object
+                answer_obj = final_result.get('answer')
+                
+                if answer_obj:
+                    # Use structured format matching test file Answer structure
+                    formatted_parts = [
+                        f"**Deep Think Research Result** {confidence_emoji}",
+                        "",
+                        "## 📋 Answer",
+                        answer_obj.get('content', 'No answer content available'),
+                        "",
+                        f"**Confidence:** {answer_obj.get('confidence', 0.0):.1%}",
+                        ""
+                    ]
+                    
+                    # Add statistics if available
+                    if answer_obj.get('statistics'):
+                        stats = answer_obj['statistics']
+                        formatted_parts.extend([
+                            "## 📊 Research Statistics",
+                            f"- **Sources analyzed:** {stats.get('sources_count', 0)}",
+                            f"- **Key topics:** {', '.join(stats.get('key_topics', []))}",
+                            f"- **Research depth:** {stats.get('depth_level', 'Standard')}",
+                            ""
+                        ])
+                    
+                    # Add processing time if available
+                    if final_result.get('processing_time'):
+                        formatted_parts.append(f"*Processing time: {final_result['processing_time']:.1f}s*")
+                    
+                    formatted_response = "\n".join(formatted_parts)
+                    
+                    # Store the complete AI response in MongoDB
+                    response_doc = {
+                        'message_id': str(uuid.uuid4()),
+                        'chat_id': chat_id,
+                        'user_id': user_id,
+                        'message': formatted_response,
+                        'timestamp': datetime.utcnow(),
+                        'type': 'assistant',
+                        'search_results': final_result.get('scraped_content', []),
+                        'deepthink_data': final_result,  # Store full deep-think data
+                        'shared': False,
+                        'deepthink_completed': True  # Mark as completed background task
+                    }
+                    
+                    try:
+                        await self.application.mongodb.create_message(response_doc)
+                        logger.info(f"✅ Background deep-think response stored successfully for chat_id: {chat_id}")
+                    except Exception as e:
+                        logger.error(f"❌ Error storing background deep-think response: {e}")
+                else:
+                    logger.warning(f"⚠️ Background deep-think completed but no structured answer found for chat_id: {chat_id}")
+            else:
+                logger.error(f"❌ Background deep-think failed to produce result for chat_id: {chat_id}")
+                
+        except Exception as e:
+            logger.error(f"❌ Background deep-think process failed for chat_id: {chat_id}: {e}")
 
 class SharedMessagesHandler(tornado.web.RequestHandler):
     """
