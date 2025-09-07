@@ -1,174 +1,269 @@
-# Project Structure
+# Project Structure - dxee-china
 
 ## Root Directory Organization
 
 ```
 dxee-china/
-├── backend/                    # Primary application directory
-├── docs/                       # Project documentation
-├── scripts/                    # Utility scripts
-├── web/                        # Nginx configuration
-├── .kiro/                      # Kiro spec-driven development
-├── docker-compose.yml          # Meilisearch container setup
-├── setup_venvs.sh              # Environment setup script
-├── activate_backend.sh         # Virtual environment activation
-└── README.md                   # Project overview
+├── backend/                 # Python backend application
+├── docs/                    # Project documentation
+├── .kiro/                   # Kiro spec-driven development files
+├── docker-compose.yml       # Meilisearch container configuration
+├── README.md               # Main project documentation
+├── CLAUDE.md               # Claude Code project instructions
+└── setup_venvs.sh          # Environment setup script
 ```
 
 ### Key Root Files
-- **CLAUDE.md**: Project instructions and development guidelines
-- **docker-compose.yml**: Meilisearch v1.7 container configuration
-- **setup_venvs.sh**: Automated virtual environment and dependency setup
-- **activate_backend.sh**: Backend environment activation helper
+- **docker-compose.yml**: Meilisearch service configuration for content search
+- **setup_venvs.sh**: Automated virtual environment setup for development
+- **activate_backend.sh**: Environment activation script for backend development
+- **CLAUDE.md**: Comprehensive project instructions and development guidelines
 
-## Backend Directory Structure
+## Backend Directory Structure (`/backend/`)
 
 ```
 backend/
-├── app/
-│   ├── handler/                # HTTP request handlers (Tornado)
-│   ├── service/                # Business logic services
-│   ├── research/               # Advanced web research system
-│   └── tornado_main.py         # Application entry point
-├── templates/                  # HTML templates
-├── pyproject.toml              # Modern Python project configuration
-├── requirements.txt            # Python dependencies (legacy)
-├── uv.lock                     # UV package manager lock file
-├── run.sh                      # Development server script
-├── test_api.sh                 # API testing script
-├── wsgi.py                     # Production WSGI configuration
-└── extensive test files        # Comprehensive testing suite
+├── app/                     # Main application package
+│   ├── handler/            # Request handlers (Tornado handlers)
+│   ├── service/            # Business logic services
+│   ├── research/           # Advanced research system components
+│   └── tornado_main.py     # Application entry point
+├── templates/              # HTML templates
+├── static/                 # Static assets (CSS, JS, images)
+├── tests/                  # Test files (numerous test_*.py files)
+├── pyproject.toml          # Modern Python project configuration
+├── requirements.txt        # Python dependencies
+├── .env.example           # Environment variables template
+├── run.sh                 # Development server startup script
+├── test_api.sh            # API testing script
+└── wsgi.py                # Production server configuration
 ```
 
-## Subdirectory Structures
+## Application Package Structure (`/backend/app/`)
 
-### Handler Layer (`backend/app/handler/`)
-Request handlers following Tornado patterns:
+### Handler Layer (`/handler/`)
+Request handlers implementing Tornado RequestHandler patterns:
 
-- **auth_handler.py**: Multi-provider OAuth and email/password authentication
-- **chat_handler.py**: Real-time streaming chat with Server-Sent Events
-- **search_handler.py**: Content search functionality
+- **auth_handler.py**: Authentication (OAuth, login, registration, password reset)
+- **chat_handler.py**: Main chat functionality with streaming support
+- **deepthink_handler.py**: Deep-thinking AI research mode
+- **dual_research_handler.py**: Dual research capabilities
+- **deep_search_handler.py**: Enhanced web search functionality
+- **search_handler.py**: Content search using Meilisearch
 - **health_handler.py**: Service health monitoring
-- **main_handler.py**: Main application interface
-- **admin_handler.py**: Administrative functions
-- **deep_search_handler.py**: Advanced search capabilities
-- **dual_research_handler.py**: Dual-mode research operations
+- **main_handler.py**: Main page and static content
+- **admin_handler.py**: Administrative functionality
 
-### Service Layer (`backend/app/service/`)
-Business logic services with clear separation:
+### Service Layer (`/service/`)
+Business logic services implementing core functionality:
 
-- **deepseek_service.py**: Core AI chat service with streaming support
-- **enhanced_deepseek_service.py**: Advanced AI service with research capabilities
-- **enhanced_deepseek_research_service.py**: Sophisticated research orchestration
-- **mongodb_service.py**: Database operations and connection management
+- **deepseek_service.py**: DeepSeek AI integration with streaming
+- **mongodb_service.py**: Database operations and queries
 - **search_service.py**: Meilisearch integration
-- **message_formatter.py**: Response formatting and processing
-- **dual_research_service.py**: Multi-mode research coordination
-- **deep_search_service.py**: Advanced search algorithms
+- **enhanced_deepseek_research_service.py**: Advanced research capabilities
+- **deepthink_orchestrator.py**: Deep-thinking workflow management
+- **jan_reasoning_engine.py**: Jan AI reasoning integration
+- **query_generation_engine.py**: Multi-query generation for research
+- **answer_synthesizer.py**: Research result synthesis
+- **serper_api_client.py**: Serper API integration for web search
+- **error_recovery_system.py**: Error handling and recovery
+- **message_formatter.py**: Message formatting utilities
 
-### Research System (`backend/app/research/`)
-Comprehensive web research and analysis framework:
+### Research System (`/research/`)
+Modular research system with clean interfaces:
 
+- **interfaces.py**: Abstract base classes and data structures
 - **orchestrator.py**: Main research workflow coordination
-- **web_search.py**: Google Custom Search API integration
-- **content_extractor.py**: Bright Data API for content extraction
-- **ai_reasoning.py**: AI-powered relevance evaluation and analysis
-- **cache.py**: MongoDB-based content caching system
-- **metrics.py**: Research performance and quality metrics
+- **web_search.py**: Web search functionality
+- **content_extractor.py**: Content extraction from web pages
+- **ai_reasoning.py**: AI-powered reasoning and analysis
+- **cache.py**: Research result caching system
+- **metrics.py**: Performance and quality metrics
 - **config.py**: Research system configuration
-- **interfaces.py**: Type definitions and contracts
-- **migration_guide.py**: System upgrade and migration procedures
+- **migration_guide.py**: Migration utilities for system updates
 
 ## Code Organization Patterns
 
-### Handler-Service Pattern
-- **Handlers**: HTTP request/response, input validation, error handling
-- **Services**: Business logic, external API integration, data processing
-- **Clear Separation**: Handlers delegate to services, services handle business logic
-
-### Async-First Design
+### Async-First Architecture
 ```python
-# All I/O operations use async/await
-async def handler_method(self):
-    result = await service.async_operation()
-    return self.write_json(result)
+# Handler pattern
+class ChatStreamHandler(BaseHandler):
+    async def post(self):
+        # Async request handling
+        
+# Service pattern  
+class DeepSeekService:
+    async def generate_response(self):
+        # Async AI API calls
+        
+# Database pattern
+async def save_message(self, message_data):
+    # Async MongoDB operations
 ```
 
-### Error Handling Strategy
-- **Graceful Degradation**: Fallback to legacy endpoints if streaming fails
-- **Comprehensive Logging**: Structured logging throughout the application
-- **User-Friendly Responses**: Clear error messages with appropriate HTTP status codes
+### Request Flow Pattern
+```
+HTTP Request → Handler → Service → Database/API → Response Stream
+```
+
+### Research System Pattern
+```
+Query → Orchestrator → Search → Extract → Reason → Synthesize → Stream
+```
 
 ## File Naming Conventions
 
 ### Python Files
-- **snake_case**: All Python files use snake_case naming
-- **Service Suffix**: Service files end with `_service.py`
-- **Handler Suffix**: Request handlers end with `_handler.py`
-- **Test Prefix**: Test files start with `test_`
+- **Handlers**: `*_handler.py` - Tornado request handlers
+- **Services**: `*_service.py` - Business logic services  
+- **Models**: `*_models.py` - Data models and structures
+- **Tests**: `test_*.py` - Test files with descriptive names
+- **Configuration**: `config.py`, `settings.py` - Configuration modules
 
-### Configuration Files
-- **pyproject.toml**: Modern Python project configuration (preferred)
-- **requirements.txt**: Legacy dependency specification (maintained for compatibility)
-- **uv.lock**: UV package manager lock file
-- **.env.example**: Environment variable template
+### Research System Files
+- **Interfaces**: `interfaces.py` - Abstract base classes
+- **Core Components**: `orchestrator.py`, `cache.py`, `metrics.py`
+- **Functional Modules**: `web_search.py`, `content_extractor.py`, `ai_reasoning.py`
 
-### Test Files
-Extensive testing infrastructure with descriptive naming:
-- **test_deepseek_advanced_web_research3_07.py**: Specific algorithm version testing
-- **test_task[N]_[description].py**: Task-specific testing modules
-- **test_[component]_[functionality].py**: Component-focused tests
+### Development Scripts
+- **Setup**: `setup_*.sh`, `activate_*.sh` - Environment management
+- **Testing**: `test_*.sh`, `run_*.sh` - Development utilities
+- **Configuration**: `*.example` - Template files
 
 ## Import Organization
 
-### Standard Import Order
+### Handler Imports
 ```python
-# Standard library imports
-import asyncio
-import json
-from typing import Dict, List, Optional
+# Standard library
+import os, asyncio, logging
 
-# Third-party imports
+# Third-party
 import tornado.web
-from motor.motor_asyncio import AsyncIOMotorClient
-from openai import AsyncOpenAI
+from tornado.concurrent import Future
 
-# Local application imports
+# Local services
+from app.service.deepseek_service import DeepSeekService
 from app.service.mongodb_service import MongoDBService
-from app.research.orchestrator import ResearchOrchestrator
 ```
 
-### Service Dependencies
-- **Handlers import Services**: Clear dependency direction
-- **Services import Research**: Modular research system integration
-- **Configuration Centralized**: Environment variables managed centrally
+### Service Imports  
+```python
+# Standard library
+import asyncio, json, logging
+from typing import List, Dict, Any, Optional
+
+# Third-party
+from openai import AsyncOpenAI
+from motor.motor_asyncio import AsyncIOMotorClient
+
+# Local modules
+from .message_formatter import MessageFormatter
+```
+
+### Research System Imports
+```python
+# Standard library
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import AsyncGenerator
+
+# Local interfaces
+from .interfaces import ResearchQuery, SearchResult
+```
 
 ## Key Architectural Principles
 
 ### Separation of Concerns
-- **Presentation Layer**: Tornado handlers manage HTTP concerns
-- **Business Logic Layer**: Services contain domain logic
-- **Data Layer**: MongoDB and Meilisearch operations
-- **Research Layer**: Specialized web research and AI analysis
+- **Handlers**: HTTP request/response and user interaction
+- **Services**: Business logic and external API integration
+- **Research**: Modular research system with clean interfaces
+- **Database**: Data persistence and retrieval operations
 
-### Async-First Architecture
-- **Non-blocking I/O**: All database and API operations use async/await
-- **Concurrent Processing**: Multiple research queries processed simultaneously
-- **Stream Processing**: Real-time response streaming with queues
+### Async/Await Throughout
+- All I/O operations use async/await pattern
+- Non-blocking database operations with Motor (async MongoDB driver)
+- Streaming responses with async generators
+- Concurrent processing for research workflows
+
+### Modular Research System
+- **Interface-based design**: Abstract base classes for all components
+- **Pluggable components**: Easy to swap implementations
+- **Configuration-driven**: Centralized configuration management
+- **Metrics and monitoring**: Built-in performance tracking
+
+### Error Handling Strategy
+```python
+# Service level error handling
+try:
+    result = await external_api_call()
+except SpecificAPIError as e:
+    logger.error(f"API error: {e}")
+    return fallback_response()
+except Exception as e:
+    logger.exception("Unexpected error")
+    raise ServiceError("Internal service error")
+```
 
 ### Configuration Management
-- **Environment-Based**: All configuration via environment variables
-- **Development vs Production**: Clear separation of development and production settings
-- **Security-Conscious**: Sensitive data (API keys, secrets) never committed to repository
+- **Environment variables**: All secrets and configuration in .env
+- **Layered configuration**: Default → Environment → Runtime overrides
+- **Validation**: Pydantic models for configuration validation
+- **Documentation**: Comprehensive .env.example with comments
 
-### Testing Strategy
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: Service interaction testing
-- **Performance Tests**: Research workflow performance validation
-- **API Tests**: HTTP endpoint testing with `test_api.sh`
+## Testing Structure
 
-### Documentation Organization
-- **README Files**: Component-specific documentation in subdirectories
-- **Inline Documentation**: Comprehensive docstrings for complex functions
-- **Configuration Documentation**: Clear environment variable documentation
-- **API Documentation**: Endpoint specifications and examples
+### Test File Organization
+```
+backend/
+├── test_api.sh                    # Integration test script
+├── test_deepseek_*.py            # DeepSeek API tests
+├── test_unit_*.py                # Unit tests
+├── test_task*_*.py               # Feature-specific tests
+└── test_*_integration.py         # Integration tests
+```
+
+### Test Patterns
+- **Unit tests**: Individual component testing
+- **Integration tests**: Service interaction testing
+- **API tests**: HTTP endpoint testing
+- **Performance tests**: Load and benchmark testing
+
+## Documentation Organization
+
+### Documentation Structure
+```
+docs/
+├── deepseek-*.md                 # AI service documentation
+├── environment-configuration.md  # Setup guides
+└── *.md                         # Feature-specific documentation
+```
+
+### Documentation Principles
+- **Feature-focused**: Each major feature has dedicated documentation
+- **Setup guides**: Clear environment and deployment instructions
+- **API documentation**: Endpoint specifications and examples
+- **Troubleshooting**: Common issues and solutions
+
+## Development Workflow Structure
+
+### Environment Management
+```bash
+# Setup (one-time)
+./setup_venvs.sh
+
+# Development session
+./activate_backend.sh
+cd backend && ./run.sh
+
+# Testing
+./backend/test_api.sh
+python test_specific_feature.py
+```
+
+### Code Quality Tools
+- **Type hints**: Comprehensive typing throughout codebase
+- **Logging**: Structured logging with multiple levels
+- **Error tracking**: Comprehensive exception handling
+- **Performance monitoring**: Built-in metrics collection
+
+This structure supports rapid development while maintaining clean separation of concerns and enabling easy testing and deployment.

@@ -1,49 +1,67 @@
-# Product Overview
+# Product Overview - dxee-china
 
-## Product Overview
-The dxee-china project is a bidirectional information bridge application that serves as a crucial link between China and the global community. It provides official China data to Asia-Europe users while delivering verified global information to mainland China users, facilitating better cross-cultural understanding and information access.
+## Product Description
+
+**dxee-china** is a bidirectional information bridge application providing official China data to Asia-Europe users and verified global information to mainland China users. The application serves as a trusted intermediary for cross-border information exchange, ensuring accuracy and cultural relevance.
 
 ## Core Features
-- **🔄 Real-time Streaming Chat**: AI-powered conversations with word-by-word response streaming like ChatGPT, powered by DeepSeek API
-- **🔍 Advanced Web Research**: Sophisticated research capabilities with multi-query generation, content extraction, relevance evaluation, and statistical analysis
-- **🔐 Multi-Provider Authentication**: Comprehensive OAuth support (Google, Microsoft, Apple, GitHub) plus traditional email/password registration
-- **💾 Persistent Storage & Search**: MongoDB for chat history and user data, with Meilisearch for fast content discovery
-- **📊 Enhanced Research Intelligence**: AI-powered relevance scoring (0-10 scale), content caching, source attribution, and comprehensive reporting
-- **⚡ High-Performance Architecture**: Async-first design with concurrent processing, streaming optimization, and graceful error handling
 
-## Target Use Case
+- **🔄 Real-time Streaming Chat**: AI-powered conversations with word-by-word streaming responses like ChatGPT, providing immediate user engagement
+- **🧠 Advanced AI Research**: Multiple AI reasoning modes including DeepSeek research, deep-thinking analysis, and dual research capabilities
+- **🌐 Enhanced Web Search**: Multi-query generation with relevance evaluation, content extraction, and comprehensive analysis
+- **🔍 Fast Content Search**: Meilisearch-powered content discovery for shared conversations and historical data
+- **🔐 Multi-Provider Authentication**: Support for Google, Microsoft, Apple OAuth plus traditional email/password registration
+- **💾 Persistent Storage**: MongoDB-based chat history, user profiles, and research caching
+- **📊 Research Analytics**: Statistical analysis, numerical data extraction, and comprehensive summaries
+- **🎯 Relevance Filtering**: AI-powered content scoring (0-10 scale) with configurable threshold filtering
+- **⚡ Performance Optimization**: Configurable caching (30-day default), concurrent processing, and timeout management
 
-### Primary Users
-1. **Asia-Europe Business Professionals**: Need reliable, official information about China's policies, regulations, and business environment
-2. **Mainland China Users**: Require access to verified global news, research, and international perspectives
-3. **Researchers & Analysts**: Seeking comprehensive data analysis with source attribution and relevance scoring
-4. **Information Professionals**: Need efficient tools for cross-cultural information gathering and validation
+## Target Use Cases
 
-### Specific Scenarios
-- **Business Intelligence**: Real-time research on Chinese market conditions, regulations, and opportunities
-- **Academic Research**: Comprehensive information gathering with statistical analysis and source verification
-- **News & Media**: Access to verified information from both Chinese and international sources
-- **Policy Analysis**: Understanding bilateral relations and policy impacts between China and global markets
+### Primary Use Cases
+- **Cross-cultural Information Exchange**: Bridging information gaps between China and Asia-Europe regions
+- **Research and Analysis**: Deep research capabilities for comprehensive topic investigation
+- **Real-time Consultation**: Immediate AI-powered assistance with streaming responses
+- **Content Discovery**: Finding and sharing relevant conversations and research results
 
-## Key Value Proposition
+### Secondary Use Cases
+- **Educational Research**: Academic and professional research with source attribution
+- **Business Intelligence**: Market research and trend analysis with statistical summaries
+- **Cultural Bridge**: Understanding cultural context and nuances in information exchange
+
+## Key Value Propositions
 
 ### Unique Benefits
-- **Bidirectional Information Flow**: Unlike one-way news aggregators, provides balanced access to both Chinese official data and global perspectives
-- **AI-Enhanced Research**: Advanced relevance evaluation (70%+ threshold filtering) and statistical analysis capabilities beyond simple search
-- **Source Verification**: Comprehensive provenance tracking with confidence metrics and cache management
-- **Real-time Intelligence**: Live streaming responses with progressive disclosure and immediate feedback
-- **Cultural Bridge**: Facilitates understanding between Chinese and international perspectives through verified information exchange
+- **Bidirectional Information Flow**: Serves both China-to-global and global-to-China information needs
+- **Advanced AI Integration**: Multiple AI reasoning engines (DeepSeek, Qwen, deep-thinking modes)
+- **Research Excellence**: 70% relevance threshold filtering ensures high-quality results
+- **Real-time Experience**: Streaming responses provide immediate engagement
+- **Privacy-First Design**: Local MongoDB storage with configurable data retention
 
-### Differentiators
-- **Official Data Access**: Direct integration with authoritative Chinese information sources
-- **Advanced AI Research**: Multi-angle query generation, content extraction, and relevance evaluation using state-of-the-art AI models
-- **Privacy-Focused**: Local MongoDB storage for sensitive data with configurable caching policies
-- **Professional-Grade**: Built for high-volume usage (~2000 users with ~200 chats each) with comprehensive error handling
-- **Comprehensive Research Workflow**: 10-step research process with real-time progress tracking and statistical summarization
+### Competitive Advantages
+- **Cultural Sensitivity**: Designed specifically for China-Asia-Europe information exchange
+- **Multi-Modal Research**: Combines web search, content extraction, and AI reasoning
+- **Performance Optimized**: Intelligent caching and concurrent processing capabilities
+- **Comprehensive Analytics**: Statistical analysis and numerical data extraction
+- **Source Attribution**: Complete provenance tracking with confidence metrics
 
 ## Success Metrics
-- **Information Accuracy**: Relevance scores ≥7.0 for research results
-- **User Engagement**: Active chat sessions and research queries
-- **Response Performance**: Sub-second streaming initiation, 10-minute research sessions
-- **Content Quality**: Source attribution completeness and cache hit rates
-- **Cross-Cultural Usage**: Balanced usage between Asia-Europe and mainland China user segments
+
+- **User Engagement**: Real-time streaming chat adoption and session duration
+- **Research Quality**: Relevance scores and user satisfaction with research results
+- **Information Bridge Effectiveness**: Cross-cultural information exchange usage patterns
+- **System Performance**: Response times, cache hit rates, and concurrent user support
+- **Content Discovery**: Shared content usage and search effectiveness
+
+## Target Audience
+
+### Primary Users
+- **Asia-Europe Business Professionals**: Seeking reliable China market information
+- **Mainland China Users**: Requiring verified global information and perspectives
+- **Researchers and Analysts**: Conducting cross-cultural studies and market research
+- **Educational Institutions**: Teaching and learning about China-global relationships
+
+### Secondary Users
+- **Technology Professionals**: Exploring AI-powered research and analysis tools
+- **Content Creators**: Producing culturally-aware content about China and global topics
+- **Policy Makers**: Understanding cross-regional implications and trends

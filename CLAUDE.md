@@ -23,7 +23,7 @@ A bidirectional information bridge application providing official China data to 
 
 ### Steering vs Specification
 
-**Steering** (`.kiro/steering/`) - Guide AI with project-wide rules and context  
+**Steering** (`.kiro/steering/`) - Guide AI with project-wide rules and context
 **Specs** (`.kiro/specs/`) - Formalize development process for individual features
 
 ### Active Specifications
@@ -31,6 +31,7 @@ A bidirectional information bridge application providing official China data to 
 - **comprehensive-analysis-fix**: Fix comprehensive analysis generation and result summarization in research system v3.07
 - **deepseek-button-integration**: Integrate test_deepseek_advanced_web_research3_07.py algorithm as DeepSeek button functionality
 - **serper-deep-think-integration**: Replicate test_deepseek_advanced_web_search4_01.py algorithm with serper-mcp API and Jan deep-thinking logic as "deep-think" button functionality
+- **deepthink-streamlining-and-caching**: Frontend button cleanup (remove Google Deep/DeepSeek buttons) and Deep Think enhancement with MongoDB HTML caching and session resilience
 - Current spec: Check `.kiro/specs/` for active specifications
 - Use `/kiro:spec-status [feature-name]` to check progress
 
@@ -82,7 +83,7 @@ The chat system supports enhanced research mode via `search_mode: "deepseek"` pa
 POST /chat/stream
 {
     "message": "user question",
-    "chat_id": "uuid", 
+    "chat_id": "uuid",
     "search_mode": "deepseek",
     "chat_history": []
 }
@@ -290,12 +291,13 @@ uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:appl
 - **Configuration**: Environment variables in `.env` file
 
 ## Development Guidelines
-- Think in English, generate responses in English
+- Think in English, generate responses in English.
+- Write the requirement/design/task document in both English and Japanese translation.
 
 ## Workflow
 
 ### Phase 0: Steering (Optional)
-`/kiro:steering` - Create/update steering documents  
+`/kiro:steering` - Create/update steering documents
 `/kiro:steering-custom` - Create custom steering for specialized contexts
 
 Note: Optional for new features or small additions. You can proceed directly to spec-init.
@@ -330,7 +332,7 @@ Managed by `/kiro:steering` command. Updates here reflect command changes.
 
 ### Custom Steering Files
 <!-- Added by /kiro:steering-custom command -->
-<!-- Format: 
+<!-- Format:
 - `filename.md`: Mode - Pattern(s) - Description
   Mode: Always|Conditional|Manual
   Pattern: File patterns for Conditional mode
@@ -340,4 +342,3 @@ Managed by `/kiro:steering` command. Updates here reflect command changes.
 - **Always**: Loaded in every interaction (default)
 - **Conditional**: Loaded for specific file patterns (e.g., "*.test.js")
 - **Manual**: Reference with `@filename.md` syntax
-

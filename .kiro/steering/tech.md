@@ -1,171 +1,221 @@
-# Technology Stack
+# Technology Stack - dxee-china
 
-## Architecture
-**Backend-Focused Async Web Application** with sophisticated AI research capabilities and real-time streaming communication.
+## Architecture Overview
 
-### High-Level Design
-- **Async-First Architecture**: Built on Tornado web framework for high-concurrency handling
-- **Microservice-Style Organization**: Handlers, services, and research modules with clear separation of concerns
-- **Real-Time Communication**: Server-Sent Events (SSE) for streaming chat responses and research progress
-- **Dual Storage Strategy**: MongoDB for complete data + Meilisearch for searchable subset
-- **AI Integration**: DeepSeek API with streaming support and advanced research orchestration
+**dxee-china** implements a modern async-first architecture with real-time streaming capabilities, designed for high-performance AI-powered research and cross-cultural information exchange.
 
-## Backend Stack
+### High-Level Architecture
+- **Backend**: Python async web service with Tornado framework
+- **Database**: Local MongoDB for privacy-focused data persistence
+- **Search Engine**: Dockerized Meilisearch for fast content discovery
+- **AI Integration**: Multiple AI providers with streaming support
+- **Authentication**: Multi-provider OAuth with JWT sessions
+- **Deployment**: Production-ready with Gunicorn + Nginx
+
+## Backend Technology Stack
 
 ### Core Framework
-- **Tornado 6.4.2**: Primary async web framework for handling concurrent requests and streaming
-- **Python >=3.11**: Modern Python with async/await support and improved performance
-- **UV Package Manager**: Modern dependency management replacing pip/virtualenv
-- **Gunicorn**: Production WSGI server with Tornado workers
+- **tornado**: 6.4.2 - Async web framework and HTTP server
+- **gunicorn**: 23.0.0 - WSGI server for production deployment
+- **motor**: 3.3.2 - Async MongoDB driver for non-blocking database operations
+- **pymongo**: 4.6.1 - Synchronous MongoDB driver for compatibility
 
-### Database & Search
-- **MongoDB (Local)**: Primary persistent storage for users, chats, messages, and research cache
-  - **Motor 3.3.2**: Async MongoDB driver for non-blocking database operations
-  - **PyMongo 4.6.1**: Sync MongoDB driver for administrative operations
-- **Meilisearch (Docker)**: Fast full-text search engine for shared content discovery
-  - **meilisearch-python-sdk 4.6.0**: Official Python integration
-  - **Version**: v1.7 (containerized)
+### AI and Machine Learning
+- **openai**: 1.82.0 - Client for DeepSeek API with streaming support
+- **pydantic**: 2.11.5 - Data validation and serialization for AI models
+- **tiktoken**: >=0.9.0 - Token counting and text processing utilities
 
-### AI & Research Services
-- **OpenAI Client 1.82.0**: DeepSeek API integration with streaming support
-- **DeepSeek API**: Primary AI service for chat completions and research analysis
-- **Google Custom Search API**: Web search capabilities for research workflows
-- **Bright Data API**: Professional content extraction and web scraping
-- **Qwen/DashScope API**: Alternative AI service for specialized tasks
+### Web Research and Content Processing
+- **aiohttp**: 3.8.5 - Async HTTP client for web requests
+- **httpx**: 0.28.1 - Modern HTTP client with HTTP/2 support
+- **beautifulsoup4**: 4.12.3 - HTML parsing and content extraction
+- **newspaper3k**: 0.2.8 - Article extraction and text processing
+- **readability-lxml**: 0.8.1 - Content readability analysis
+- **lxml**: 5.3.0 - Fast XML and HTML processing
 
-### Authentication & Security
-- **Multi-Provider OAuth**: Google, Microsoft, Apple, GitHub integration
-- **PyJWT 2.10.1**: JSON Web Token handling for session management
-- **bcrypt 4.0.1**: Password hashing and verification
-- **Python-dotenv 1.0.0**: Environment variable management
+### Search and Discovery
+- **meilisearch-python-sdk**: 4.6.0 - Fast search engine integration
 
-### Content Processing
-- **BeautifulSoup4 4.12.3**: HTML parsing and content extraction
-- **newspaper3k 0.2.8**: News article extraction and processing
-- **readability-lxml 0.8.1**: Content readability analysis
-- **lxml 5.3.0**: XML/HTML processing with security updates
-- **tiktoken >=0.9.0**: Token counting for AI API optimization
+### Authentication and Security
+- **bcrypt**: 4.0.1 - Password hashing and verification
+- **PyJWT**: 2.10.1 - JWT token generation and validation
 
-### Network & HTTP
-- **HTTPX 0.28.1**: Modern async HTTP client for API integrations
-- **aiohttp 3.8.5**: Alternative async HTTP client and server components
-- **requests 2.32.3**: Sync HTTP client for simple operations
+### Development and Configuration
+- **python-dotenv**: 1.0.0 - Environment variable management
+- **aiofiles**: 24.1.0 - Async file operations
+- **psutil**: >=7.0.0 - System and process utilities
 
 ## Development Environment
 
-### Package Management
-```bash
-# UV-based virtual environment (replaces venv/pip)
-uv sync                    # Install dependencies from pyproject.toml
-uv run python script.py   # Run scripts in virtual environment
-uv add package-name       # Add new dependencies
-```
+### Python Requirements
+- **Python Version**: >=3.11 (Modern async/await syntax and performance)
+- **Package Manager**: UV for fast dependency resolution and virtual environment management
+- **Project Configuration**: pyproject.toml for modern Python packaging
 
-### Required Tools
-- **Docker**: For Meilisearch container (`docker-compose up -d`)
-- **MongoDB**: Local installation (macOS: `brew services start mongodb-community`)
-- **Python >=3.11**: Required for modern async features
-- **UV**: Modern Python package manager (replaces pip/virtualenv)
+### Development Tools
+```bash
+# Environment setup
+./setup_venvs.sh          # Initialize virtual environment
+./activate_backend.sh     # Activate backend environment
+
+# Development server
+cd backend && ./run.sh    # Start development server
+
+# Testing
+./backend/test_api.sh     # API endpoint testing
+python test_deepseek_api.py  # AI service testing
+```
 
 ## Common Commands
 
-### Development Setup
+### Development Workflow
 ```bash
-# Initial setup
-./setup_venvs.sh           # Create virtual environments
-./activate_backend.sh      # Activate backend environment
+# Backend development
+./activate_backend.sh && cd backend/
+uv run python script_name.py        # Run Python scripts
+uv run gunicorn wsgi:application     # Production server
 
-# Development server
-cd backend && ./run.sh     # Start Tornado development server
-
-# Testing
-./backend/test_api.sh      # API endpoint testing
-uv run python test_deepseek_api.py  # AI integration testing
+# Service management
+docker-compose up -d                 # Start Meilisearch
+mongod --config /usr/local/etc/mongod.conf  # Start MongoDB
 ```
 
-### Service Management
+### API Testing
 ```bash
-# Start required services
-brew services start mongodb-community  # MongoDB (macOS)
-docker-compose up -d                   # Meilisearch container
+# Health check
+curl http://localhost:8100/health
 
-# Health checks
-curl http://localhost:8100/health      # Application health
-curl http://localhost:7701/health      # Meilisearch health
-```
-
-### Production Deployment
-```bash
-# Production server
-cd backend
-uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:application
+# Chat streaming test
+curl -X POST http://localhost:8100/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello", "chat_id":"test"}'
 ```
 
 ## Environment Variables
 
 ### Core Configuration
 ```bash
-PORT=8100                  # Application port (default: 8100, .env.example: 8888)
-DEBUG=True                 # Development mode
-MONGODB_URI=mongodb://localhost:27017  # MongoDB connection
-MONGODB_DB_NAME=dxeechina  # Database name
+# Server
+PORT=8100                    # Application port
+DEBUG=True                   # Development mode
+
+# Database
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB_NAME=dxeechina
+
+# Search Engine  
+MEILISEARCH_HOST=http://localhost:7701
+MEILISEARCH_API_KEY=masterKey
 ```
 
-### Search & AI Services
+### AI Services Configuration
 ```bash
-MEILISEARCH_HOST=http://localhost:7701  # Search engine endpoint
-MEILISEARCH_API_KEY=masterKey           # Search API key
-
-DEEPSEEK_API_KEY=your_key_here          # Primary AI service
+# DeepSeek API
+DEEPSEEK_API_KEY=your_key_here
 DEEPSEEK_API_URL=https://api.deepseek.com
-GOOGLE_API_KEY=your_key_here            # Web search API
-GOOGLE_CSE_ID=your_cse_id_here          # Custom search engine
-BRIGHTDATA_API_KEY=your_key_here        # Content extraction API
+
+# Research Configuration
+DEEPSEEK_RESEARCH_TIMEOUT=600    # 10 minutes
+CACHE_EXPIRY_DAYS=30            # MongoDB cache expiry
+MAX_CONCURRENT_RESEARCH=3        # Concurrent sessions
+
+# Qwen API (Alternative AI provider)
+DASHSCOPE_API_KEY=your_key_here
+DASHSCOPE_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
 
-### Research Configuration
+### Web Search APIs
 ```bash
-DEEPSEEK_RESEARCH_TIMEOUT=600           # Research timeout (10 minutes)
-CACHE_EXPIRY_DAYS=30                   # MongoDB cache expiry
-MAX_CONCURRENT_RESEARCH=3              # Concurrent research sessions
+# Google Custom Search
+GOOGLE_API_KEY=your_key_here
+GOOGLE_CSE_ID=your_search_engine_id
+
+# Bright Data (Content extraction)
+BRIGHTDATA_API_KEY=your_key_here
+BRIGHTDATA_API_URL=https://api.brightdata.com/datasets/v3/scrape
+
+# Serper API (Deep-think search)
+SERPER_API_KEY=your_key_here
+SERPER_SEARCH_URL=https://google.serper.dev/search
+SERPER_SCRAPE_URL=https://scrape.serper.dev/scrape
 ```
 
-### Authentication
+### Authentication Configuration
 ```bash
-AUTH_SECRET_KEY=your_secret_here        # JWT signing key
-GOOGLE_CLIENT_ID=your_id_here          # OAuth credentials
-GOOGLE_CLIENT_SECRET=your_secret_here
-MICROSOFT_CLIENT_ID=your_id_here
-MICROSOFT_CLIENT_SECRET=your_secret_here
-APPLE_CLIENT_ID=your_id_here
-APPLE_CLIENT_SECRET=your_secret_here
-GITHUB_CLIENT_ID=your_id_here
-GITHUB_CLIENT_SECRET=your_secret_here
+# JWT
+AUTH_SECRET_KEY=your_secret_key_here
+
+# OAuth Providers
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+MICROSOFT_CLIENT_ID=your_microsoft_client_id
+MICROSOFT_CLIENT_SECRET=your_microsoft_client_secret
+APPLE_CLIENT_ID=your_apple_client_id
+APPLE_CLIENT_SECRET=your_apple_client_secret
 ```
 
 ## Port Configuration
 
 ### Standard Ports
-- **8100**: Main application (production default)
-- **8888**: Alternative application port (.env.example default)
-- **27017**: MongoDB (standard MongoDB port)
-- **7701**: Meilisearch (mapped from container port 7700)
+- **8100**: Main application server (configurable via PORT env var)
+- **27017**: MongoDB database (default MongoDB port)
+- **7701**: Meilisearch service (configured in docker-compose.yml)
 
-### Service Dependencies
-- **MongoDB**: Must be running locally on port 27017
-- **Meilisearch**: Docker container mapped to host port 7701
-- **External APIs**: DeepSeek, Google CSE, Bright Data (outbound HTTPS)
+### Development vs Production
+```bash
+# Development
+PORT=8100                    # Default development port
+
+# Production
+PORT=80                      # Standard HTTP port
+# or configure with reverse proxy (Nginx) on port 80/443
+```
+
+## Service Architecture
+
+### Async-First Design
+- **Non-blocking I/O**: All database and API operations use async/await
+- **Streaming Support**: Real-time response delivery via Server-Sent Events
+- **Concurrent Processing**: Multiple research sessions and user requests
+- **Resource Management**: Automatic cleanup of stream queues and connections
+
+### Data Flow
+```
+User Request → Tornado Handler → Service Layer → AI/DB/Search → Async Response → Stream to Client
+```
+
+### Research Workflow
+1. **Query Generation**: AI-powered multi-query generation
+2. **Web Search**: Parallel search execution with multiple APIs
+3. **Content Extraction**: High-quality content extraction and caching
+4. **Relevance Evaluation**: AI scoring with threshold filtering
+5. **Answer Synthesis**: Consolidation and statistical analysis
+6. **Streaming Response**: Real-time progress updates via SSE
 
 ## Performance Characteristics
 
-### Scalability
-- **Concurrent Users**: ~2000 users with ~200 chats each
-- **Async Processing**: Non-blocking I/O for database and API operations
-- **Memory Efficient**: Queue-based streaming with automatic cleanup
-- **Cache Strategy**: 30-day content caching with configurable expiry
+### Scalability Targets
+- **User Capacity**: ~2000 concurrent users
+- **Chat Storage**: ~200 chats per user with full history
+- **Research Timeout**: 10 minutes per session with graceful handling
+- **Cache Performance**: 30-day retention with intelligent invalidation
 
-### Monitoring
-- **Health Endpoints**: `/health` for service status checks
-- **Logging**: Structured logging with configurable levels (INFO default)
-- **Error Handling**: Graceful degradation with retry logic
-- **Metrics**: Cache hit rates, response times, research completion rates
+### Optimization Features
+- **Memory Efficiency**: Queue-based processing with automatic cleanup
+- **Database Optimization**: Indexed queries and aggregation pipelines
+- **Caching Strategy**: Multi-level caching (MongoDB + in-memory)
+- **Error Recovery**: Graceful degradation and retry mechanisms
+
+## Development Guidelines
+
+### Code Quality Standards
+- **Async/Await**: Use async/await for all I/O operations
+- **Type Hints**: Comprehensive typing with pydantic models
+- **Error Handling**: Structured exception handling with logging
+- **Testing**: Unit tests and integration tests for critical paths
+
+### Security Best Practices
+- **Environment Variables**: Never commit secrets to version control
+- **Input Validation**: Pydantic models for request validation
+- **Authentication**: Secure JWT implementation with proper expiration
+- **Data Privacy**: Local database storage for sensitive information
