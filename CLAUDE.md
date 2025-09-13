@@ -23,7 +23,7 @@ A bidirectional information bridge application providing official China data to 
 
 ### Steering vs Specification
 
-**Steering** (`.kiro/steering/`) - Guide AI with project-wide rules and context
+**Steering** (`.kiro/steering/`) - Guide AI with project-wide rules and context  
 **Specs** (`.kiro/specs/`) - Formalize development process for individual features
 
 ### Active Specifications
@@ -32,9 +32,8 @@ A bidirectional information bridge application providing official China data to 
 - **deepseek-button-integration**: Integrate test_deepseek_advanced_web_research3_07.py algorithm as DeepSeek button functionality
 - **serper-deep-think-integration**: Replicate test_deepseek_advanced_web_search4_01.py algorithm with serper-mcp API and Jan deep-thinking logic as "deep-think" button functionality
 - **deepthink-streamlining-and-caching**: Frontend button cleanup (remove Google Deep/DeepSeek buttons) and Deep Think enhancement with MongoDB HTML caching and session resilience
-- Current spec: Check `.kiro/specs/` for active specifications
+- Check `.kiro/specs/` for active specifications
 - Use `/kiro:spec-status [feature-name]` to check progress
-
 ## Project Structure
 
 ### Backend (`/backend/`)
@@ -282,6 +281,9 @@ uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:appl
 5. **Testing**: Test both streaming and non-streaming modes
 6. **Logging**: Use structured logging for debugging
 
+- Think in English, generate responses in English
+- Write the requirement/design/task document in both English and Japanese translation.
+
 ## Environment Setup Notes
 
 - **UV package manager**: Modern Python dependency management
@@ -290,14 +292,12 @@ uv run gunicorn --bind 0.0.0.0:8100 --workers=1 --worker-class=tornado wsgi:appl
 - **Search**: Dockerized Meilisearch for easy deployment
 - **Configuration**: Environment variables in `.env` file
 
-## Development Guidelines
-- Think in English, generate responses in English.
-- Write the requirement/design/task document in both English and Japanese translation.
+
 
 ## Workflow
 
 ### Phase 0: Steering (Optional)
-`/kiro:steering` - Create/update steering documents
+`/kiro:steering` - Create/update steering documents  
 `/kiro:steering-custom` - Create custom steering for specialized contexts
 
 Note: Optional for new features or small additions. You can proceed directly to spec-init.
@@ -332,7 +332,7 @@ Managed by `/kiro:steering` command. Updates here reflect command changes.
 
 ### Custom Steering Files
 <!-- Added by /kiro:steering-custom command -->
-<!-- Format:
+<!-- Format: 
 - `filename.md`: Mode - Pattern(s) - Description
   Mode: Always|Conditional|Manual
   Pattern: File patterns for Conditional mode

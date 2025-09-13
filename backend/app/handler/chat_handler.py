@@ -6,13 +6,14 @@ import traceback
 import json
 import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId, json_util
 
-# Import the enhanced research service and new deep-think orchestrator
-from app.service.enhanced_deepseek_research_service import EnhancedDeepSeekResearchService
-from app.service.deepthink_orchestrator import DeepThinkOrchestrator
-from app.service.deepthink_models import DeepThinkRequest
+# Import the simplified deep-think orchestrator and enhanced streaming
+from app.service.deep_think_orchestrator import DeepThinkOrchestrator
+from app.service.progress_streaming_service import ProgressStreamingService
+from app.service.session_manager_service import SessionManagerService
+from app.service.enhanced_chat_storage import EnhancedChatStorageService
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -513,11 +514,6 @@ class ChatStreamHandler(tornado.web.RequestHandler):
             # Add stream queue for this chat
             self.application.stream_queues[chat_id] = stream_queue
             
-            # Check if this is a DeepSeek research request
-            if search_mode == "deepseek":
-                logger.info(f"DeepSeek research mode detected for chat_id: {chat_id}")
-                await self._handle_deepseek_research(message, chat_id, user_id, message_id, stream_queue)
-                return
             
             # Check if this is a deep-think request (new orchestrator)
             if search_mode == "deepthink":
@@ -614,413 +610,289 @@ class ChatStreamHandler(tornado.web.RequestHandler):
             except:
                 pass
     
-    async def _handle_deepseek_research(self, message: str, chat_id: str, user_id: str, message_id: str, stream_queue):
-        """Handle DeepSeek research mode with streaming progress updates"""
-        try:
-            # Initialize the enhanced research service
-            research_service = EnhancedDeepSeekResearchService(
-                mongodb_service=self.application.mongodb,
-                cache_expiry_days=int(os.environ.get('CACHE_EXPIRY_DAYS', 30))
-            )
-            await research_service.initialize()
-            
-            # Send research starting event
-            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'initializing', 'content': '🔬 Starting DeepSeek research...'})}\n\n")
-            await self.flush()
-            
-            # Send query generation step
-            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'query_generation', 'content': '📝 Generating search queries...'})}\n\n")
-            await self.flush()
-            
-            # Send web search step
-            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'web_search', 'content': '🔍 Searching the web for information...'})}\n\n")
-            await self.flush()
-            
-            # Send content extraction step
-            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'content_extraction', 'content': '📄 Extracting content from sources...'})}\n\n")
-            await self.flush()
-            
-            # Send relevance evaluation step
-            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'relevance_evaluation', 'content': '🎯 Evaluating content relevance...'})}\n\n")
-            await self.flush()
-            
-            # Send analysis step
-            self.write(f"data: {json.dumps({'type': 'research_step', 'step': 'analysis', 'content': '🧠 Generating comprehensive analysis...'})}\n\n")
-            await self.flush()
-            
-            # Conduct the research
-            research_results = await research_service.conduct_deepseek_research(message, chat_id)
-            
-            # Send progress updates based on research results
-            if research_results.get('success'):
-                steps = research_results.get('steps', {})
-                
-                # Update progress based on completed steps
-                if 'query_generation' in steps:
-                    queries = steps['query_generation'].get('queries', [])
-                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'queries_generated', 'content': f'Generated {len(queries)} search queries'})}\n\n")
-                    await self.flush()
-                
-                if 'web_search' in steps:
-                    total_results = steps['web_search'].get('total_results', 0)
-                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'search_completed', 'content': f'Found {total_results} search results'})}\n\n")
-                    await self.flush()
-                
-                if 'content_extraction' in steps:
-                    successful = steps['content_extraction'].get('successful_extractions', 0)
-                    total = steps['content_extraction'].get('total_sources', 0)
-                    cache_hits = steps['content_extraction'].get('cache_hits', 0)
-                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'extraction_completed', 'content': f'Extracted content from {successful}/{total} sources ({cache_hits} from cache)'})}\n\n")
-                    await self.flush()
-                
-                if 'relevance_evaluation' in steps:
-                    high_relevance = steps['relevance_evaluation'].get('high_relevance_count', 0)
-                    total_evaluated = steps['relevance_evaluation'].get('total_evaluated', 0)
-                    avg_relevance = steps['relevance_evaluation'].get('average_relevance', 0)
-                    self.write(f"data: {json.dumps({'type': 'research_progress', 'step': 'relevance_completed', 'content': f'{high_relevance}/{total_evaluated} sources meet relevance threshold (avg: {avg_relevance:.1f}/10)'})}\n\n")
-                    await self.flush()
-                
-                # Prepare final analysis content
-                analysis_content = research_results.get('analysis', {})
-                if isinstance(analysis_content, dict):
-                    final_content = analysis_content.get('analysis', 'Research completed successfully.')
-                    confidence = analysis_content.get('confidence', 0.0)
-                    sources_used = analysis_content.get('sources_used', 0)
-                else:
-                    final_content = str(analysis_content) if analysis_content else 'Research completed successfully.'
-                    confidence = 0.7
-                    sources_used = len(research_results.get('sources', []))
-                
-                # Add research metadata to the response
-                metadata_summary = f"\n\n---\n**Research Summary:**\n"
-                metadata_summary += f"- Sources analyzed: {sources_used}\n"
-                metadata_summary += f"- Confidence level: {confidence*100:.0f}%\n"
-                
-                timing_metrics = research_results.get('timing_metrics', {})
-                if timing_metrics:
-                    total_duration = sum(v for k, v in timing_metrics.items() if k.endswith('_duration'))
-                    metadata_summary += f"- Research time: {total_duration:.1f}s\n"
-                
-                cache_perf = research_results.get('search_metrics', {}).get('cache_performance', {})
-                if cache_perf:
-                    hit_rate = cache_perf.get('hit_rate', 0) * 100
-                    metadata_summary += f"- Cache hit rate: {hit_rate:.1f}%\n"
-                
-                full_content = final_content + metadata_summary
-                
-            else:
-                # Research failed
-                error_msg = research_results.get('error', 'Research failed for unknown reason')
-                full_content = f"❌ Research failed: {error_msg}\n\nFalling back to regular chat mode."
-                logger.error(f"DeepSeek research failed for chat_id {chat_id}: {error_msg}")
-            
-            # Send final research complete event
-            self.write(f"data: {json.dumps({'type': 'research_complete', 'content': '✅ Research completed!'})}\n\n")
-            await self.flush()
-            
-            # Send the final analysis as regular content chunks (to simulate streaming)
-            words = full_content.split()
-            accumulated_content = ""
-            
-            for i, word in enumerate(words):
-                accumulated_content += word + " "
-                
-                # Send chunks of 3-5 words at a time
-                if i % 4 == 0 and i > 0:
-                    chunk_content = " ".join(words[max(0, i-3):i+1])
-                    self.write(f"data: {json.dumps({'type': 'chunk', 'content': chunk_content + ' ', 'chat_id': chat_id, 'message_id': message_id})}\n\n")
-                    await self.flush()
-                    await asyncio.sleep(0.05)  # Small delay for realistic streaming
-            
-            # Send final completion
-            self.write(f"data: {json.dumps({'type': 'complete', 'content': accumulated_content.strip(), 'chat_id': chat_id, 'message_id': message_id, 'research_data': research_results}, cls=MongoJSONEncoder)}\n\n")
-            await self.flush()
-            
-            # Store the complete AI response in MongoDB
-            response_doc = {
-                'message_id': str(uuid.uuid4()),
-                'chat_id': chat_id,
-                'user_id': user_id,
-                'message': accumulated_content.strip(),
-                'timestamp': datetime.utcnow(),
-                'type': 'assistant',
-                'search_results': research_results.get('sources', []),
-                'research_data': research_results,  # Store full research data
-                'shared': False
-            }
-            
-            try:
-                await self.application.mongodb.create_message(response_doc)
-                logger.info(f"DeepSeek research response stored successfully for chat_id: {chat_id}")
-            except Exception as e:
-                logger.error(f"Error storing DeepSeek research response: {e}")
-            
-            # Cleanup resources
-            await research_service.cleanup()
-            
-        except Exception as e:
-            logger.error(f"Error in DeepSeek research: {e}")
-            logger.error(traceback.format_exc())
-            
-            # Send error to client
-            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Research error: {str(e)}'})}\n\n")
-            await self.flush()
-    
     async def _handle_deepthink_research(self, message: str, chat_id: str, user_id: str, message_id: str, stream_queue):
-        """Handle deep-think research mode with background processing that continues even if client disconnects"""
+        """Handle deep-think research using enhanced SSE streaming and session management"""
+        session_id = str(uuid.uuid4())
+        
         try:
-            # Validate environment configuration first
-            validation_errors = []
+            # Initialize services
+            session_manager = SessionManagerService(self.application.mongodb)
+            await session_manager.initialize()
             
-            # Check Serper API key
-            serper_api_key = os.environ.get('SERPER_API_KEY')
-            if not serper_api_key:
-                validation_errors.append("SERPER_API_KEY not configured")
+            streaming_service = ProgressStreamingService()
+            await streaming_service.start()
             
-            # Check DeepSeek API key
-            deepseek_api_key = os.environ.get('DEEPSEEK_API_KEY')
-            if not deepseek_api_key:
-                validation_errors.append("DEEPSEEK_API_KEY not configured")
-            
-            # Check DeepSeek API URL
-            deepseek_api_url = os.environ.get('DEEPSEEK_API_URL', 'https://api.deepseek.com')
-            if not deepseek_api_url.startswith(('http://', 'https://')):
-                validation_errors.append("DEEPSEEK_API_URL is malformed")
-            
-            if validation_errors:
-                error_msg = f"Configuration errors: {', '.join(validation_errors)}. Please check your environment variables."
-                logger.error(error_msg)
-                self.write(f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n")
-                await self.flush()
-                return
-            
-            # Send configuration validation success
-            self.write(f"data: {json.dumps({'type': 'deepthink_progress', 'step': 0, 'total_steps': 10, 'description': '✅ Configuration validated', 'progress': 5})}\n\n")
-            await self.flush()
-            
-            # Initialize the deep-think orchestrator
-            orchestrator = DeepThinkOrchestrator(
-                deepseek_service=self.application.deepseek_service,
-                mongodb_service=self.application.mongodb,
-                serper_api_key=serper_api_key,
-                timeout=int(os.environ.get('DEEPSEEK_RESEARCH_TIMEOUT', 600)),
-                max_concurrent_searches=int(os.environ.get('MAX_CONCURRENT_RESEARCH', 3)),
-                cache_expiry_days=int(os.environ.get('CACHE_EXPIRY_DAYS', 30))
-            )
-            
-            # Create deep-think request
-            request = DeepThinkRequest(
-                request_id=str(uuid.uuid4()),
+            # Create session in session manager
+            session = await session_manager.create_session(
                 question=message,
                 chat_id=chat_id,
                 user_id=user_id,
-                timestamp=datetime.utcnow(),
-                timeout_seconds=int(os.environ.get('DEEPSEEK_RESEARCH_TIMEOUT', 600))
+                timeout_seconds=600
             )
             
-            # Start deep-think as background task that continues even if client disconnects
-            import asyncio
-            asyncio.create_task(self._background_deepthink_process(orchestrator, request, chat_id, user_id, message_id))
+            # Create streaming connection
+            connection_id = await streaming_service.create_streaming_connection(
+                session_id=session_id,
+                user_id=user_id,
+                chat_id=chat_id,
+                handler=self
+            )
             
-            # Stream progress updates to client for as long as they're connected (but not final result)
+            logger.info(f"Created Deep Think session {session_id} with streaming connection {connection_id}")
+            
+            # Initialize orchestrator with session management
+            orchestrator = DeepThinkOrchestrator(
+                deepseek_service=self.application.deepseek_service,
+                serper_client=self.application.serper_client,
+                html_cache_service=self.application.html_cache_service,
+                mongodb_service=self.application.mongodb,
+                session_manager=session_manager
+            )
+            
+            # Start background research task
+            asyncio.create_task(self._background_research_with_streaming(
+                orchestrator, streaming_service, session, message, chat_id, user_id, message_id
+            ))
+            
+            # Stream progress updates with enhanced error handling
             try:
-                async for progress_update in orchestrator.stream_deep_think(request):
-                    if progress_update.step < orchestrator.total_steps:
-                        # Only stream progress updates, not final result (handled by background task)
-                        progress_data = {
-                            'type': 'deepthink_progress',
-                            'step': progress_update.step,
-                            'total_steps': progress_update.total_steps,
-                            'description': progress_update.description,
-                            'progress': progress_update.progress_percent,
-                            'details': progress_update.details
-                        }
-                        self.write(f"data: {json.dumps(progress_data, cls=MongoJSONEncoder)}\n\n")
-                        await self.flush()
-                    else:
-                        # Final step reached - background task will handle storage and completion
-                        self.write(f"data: {json.dumps({'type': 'deepthink_progress', 'step': progress_update.step, 'total_steps': progress_update.total_steps, 'description': '✅ Analysis complete - results saved to chat history', 'progress': 100})}\n\n")
-                        await self.flush()
+                async for progress_update in orchestrator.start_research_session(
+                    message, session_id, chat_id, user_id
+                ):
+                    # Progress is automatically handled by the streaming service
+                    # through the session manager integration
+                    
+                    await streaming_service.handle_session_progress(
+                        session_id=session_id,
+                        step=progress_update.step.value,
+                        progress=progress_update.progress,
+                        description=progress_update.description,
+                        metadata=progress_update.metadata
+                    )
+                    
+                    # If research is complete, break from streaming
+                    if progress_update.progress >= 100:
                         break
                         
             except asyncio.TimeoutError:
-                # Client connection timeout - background task continues
-                logger.info(f"⏰ Client connection timed out for deep-think, but background processing continues for chat_id: {chat_id}")
-                timeout_details = {
-                    'type': 'info',
-                    'content': "🕐 Deep-think analysis is taking longer than expected.\n\n"
-                              "✅ **Your analysis is continuing in the background.**\n"
-                              "📱 You can safely close this page - results will be saved to your chat history.\n"
-                              "🔄 Refresh the page in a few minutes to see the completed analysis.",
-                    'timeout_seconds': request.timeout_seconds
-                }
-                self.write(f"data: {json.dumps(timeout_details)}\n\n")
-                await self.flush()
+                logger.info(f"Client connection timed out for session {session_id}")
+                await streaming_service.broadcast_progress(session_id, {
+                    'type': 'timeout_info',
+                    'message': "Deep Think analysis continues in background",
+                    'details': "You can safely close this page - results will be saved to chat history"
+                })
                 
+            except Exception as stream_error:
+                logger.error(f"Streaming error for session {session_id}: {stream_error}")
+                await streaming_service.broadcast_error(session_id, f"Streaming error: {str(stream_error)}")
+            
         except Exception as e:
-            logger.error(f"Deep-think setup error: {e}")
+            logger.error(f"Deep Think setup error: {e}")
             logger.error(traceback.format_exc())
-            self.write(f"data: {json.dumps({'type': 'error', 'content': f'Deep-think setup failed: {str(e)}'})}\n\n")
+            
+            # Send error through basic SSE if streaming service failed
+            error_data = {'type': 'error', 'content': f'Deep Think failed: {str(e)}'}
+            self.write(f"data: {json.dumps(error_data)}\n\n")
             await self.flush()
 
-    async def _background_deepthink_process(self, orchestrator, request, chat_id: str, user_id: str, message_id: str):
-        """
-        Background process that ensures deep-think completes and saves to MongoDB
-        even if client disconnects
-        """
+    async def _background_research_with_streaming(self, orchestrator: DeepThinkOrchestrator, 
+                                                streaming_service: ProgressStreamingService,
+                                                session, question: str, chat_id: str, 
+                                                user_id: str, message_id: str):
+        """Background research task with enhanced streaming integration"""
+        session_id = session.session_id
+        
         try:
-            logger.info(f"🔄 Starting background deep-think process for chat_id: {chat_id}")
+            logger.info(f"🔄 Starting background Deep Think with streaming for session {session_id}")
             
-            # Process the deep-think request completely
+            # Process complete research session with streaming updates
             final_result = None
-            async for progress_update in orchestrator.stream_deep_think(request):
-                if progress_update.step == orchestrator.total_steps:
-                    final_result = progress_update.details.get('result')
+            async for progress_update in orchestrator.start_research_session(question, session_id, chat_id, user_id):
+                # Stream progress through streaming service
+                await streaming_service.handle_session_progress(
+                    session_id=session_id,
+                    step=progress_update.step.value,
+                    progress=progress_update.progress,
+                    description=progress_update.description,
+                    metadata=progress_update.metadata
+                )
+                
+                # Capture final result
+                if progress_update.progress >= 100 and progress_update.metadata.get('result'):
+                    final_result = progress_update.metadata['result']
+                    break
+            
+            # Handle completion
+            if final_result:
+                await self._handle_research_completion(
+                    streaming_service, session_id, final_result, chat_id, user_id, message_id
+                )
+            else:
+                error_msg = "Research completed but no result was generated"
+                logger.error(f"❌ {error_msg} for session {session_id}")
+                await streaming_service.handle_session_error(session_id, error_msg)
+                
+        except Exception as e:
+            error_msg = f"Background research failed: {str(e)}"
+            logger.error(f"❌ {error_msg} for session {session_id}")
+            await streaming_service.handle_session_error(session_id, error_msg)
+        
+        finally:
+            # Clean up streaming service
+            try:
+                await streaming_service.stop()
+            except Exception as cleanup_error:
+                logger.warning(f"Error during streaming cleanup: {cleanup_error}")
+
+    async def _handle_research_completion(self, streaming_service: ProgressStreamingService,
+                                        session_id: str, final_result: dict, 
+                                        chat_id: str, user_id: str, message_id: str):
+        """Handle successful research completion with enhanced storage"""
+        try:
+            # Initialize enhanced storage service
+            enhanced_storage = EnhancedChatStorageService(self.application.mongodb)
+            await enhanced_storage.initialize()
+            
+            # Initialize session manager to get session details
+            session_manager = SessionManagerService(self.application.mongodb)
+            await session_manager.initialize()
+            
+            # Get session details
+            session = await session_manager.get_session(session_id)
+            if not session:
+                logger.error(f"Session {session_id} not found for completion")
+                await streaming_service.handle_session_error(session_id, "Session not found")
+                return
+            
+            # Convert final_result to SessionResult format
+            from ..models.session_models import SessionResult
+            
+            result_answer = final_result['answer']
+            session_result = SessionResult(
+                answer_content=result_answer['content'],
+                confidence=result_answer['confidence'],
+                sources=result_answer.get('sources', []),
+                statistics=result_answer.get('statistics', {}),
+                generation_time=final_result.get('generation_time', 0.0),
+                total_duration=final_result.get('total_duration', 0.0),
+                queries_generated=final_result.get('queries_generated', 0),
+                sources_analyzed=final_result.get('sources_analyzed', 0),
+                cache_hits=final_result.get('cache_hits', 0),
+                metadata=final_result.get('metadata', {})
+            )
+            
+            # Store using enhanced storage service
+            stored_message_id = await enhanced_storage.store_deepthink_result(session, session_result)
+            
+            # Complete session in session manager
+            await session_manager.complete_session(session_id, session_result)
+            
+            # Notify completion through streaming service
+            await streaming_service.handle_session_completion(session_id, {
+                'message_stored': True,
+                'message_id': stored_message_id,
+                'confidence': result_answer['confidence'],
+                'sources_count': len(result_answer.get('sources', [])),
+                'processing_time': final_result['total_duration'],
+                'enhanced_storage': True
+            })
+            
+            logger.info(f"✅ Enhanced Deep Think storage completed for session {session_id} -> message {stored_message_id}")
+            
+        except Exception as e:
+            error_msg = f"Failed to handle enhanced research completion: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            await streaming_service.handle_session_error(session_id, error_msg)
+
+    async def _background_deepthink_session(self, orchestrator: DeepThinkOrchestrator, session_id: str, 
+                                          question: str, chat_id: str, user_id: str, message_id: str):
+        """Legacy background session method (kept for compatibility)"""
+        try:
+            logger.info(f"🔄 Starting background Deep Think session {session_id}")
+            
+            # Process the complete research session
+            final_result = None
+            async for progress_update in orchestrator.start_research_session(question, session_id):
+                if progress_update.progress >= 100 and progress_update.metadata.get('result'):
+                    final_result = progress_update.metadata['result']
                     break
             
             if final_result:
-                # Format the result for storage
-                confidence = final_result.get('confidence_score', 0.0)
+                # Extract research result data
+                result_answer = final_result['answer']
+                confidence = result_answer['confidence']
                 confidence_emoji = "🟢" if confidence >= 0.8 else "🟡" if confidence >= 0.6 else "🔴"
                 
-                # Check if we have structured Answer object
-                answer_obj = final_result.get('answer')
+                # Format result for chat storage
+                formatted_parts = [
+                    f"**Deep Think Research Result** {confidence_emoji}",
+                    "",
+                    "## 📋 Research Answer",
+                    result_answer['content'],
+                    "",
+                    f"**Confidence:** {confidence:.1%}",
+                ]
                 
-                if answer_obj:
-                    # Use structured format matching test file Answer structure
-                    formatted_parts = [
-                        f"**Deep Think Research Result** {confidence_emoji}",
+                # Add statistics if available
+                if result_answer.get('statistics'):
+                    stats = result_answer['statistics']
+                    formatted_parts.extend([
                         "",
-                        "## 📋 Answer",
-                        answer_obj.get('content', 'No answer content available'),
+                        "## 📊 Research Statistics",
+                        f"- **Numbers found:** {len(stats.get('numbers_found', []))}",
+                        f"- **Percentages:** {len(stats.get('percentages', []))}",
+                        f"- **Sources analyzed:** {final_result['sources_analyzed']}",
+                        f"- **Cache hits:** {final_result['cache_hits']}",
+                    ])
+                
+                # Add sources
+                if result_answer.get('sources'):
+                    formatted_parts.extend([
                         "",
-                        f"**Confidence:** {answer_obj.get('confidence', 0.0):.1%}",
-                        ""
-                    ]
+                        "## 🔗 Top Sources",
+                    ])
+                    for i, source in enumerate(result_answer['sources'][:3], 1):
+                        formatted_parts.append(f"{i}. {source}")
+                
+                # Add processing time
+                formatted_parts.append(f"\n*Processing time: {final_result['total_duration']:.1f}s*")
+                
+                formatted_response = "\n".join(formatted_parts)
+                
+                # Store response in MongoDB
+                response_doc = {
+                    'message_id': str(uuid.uuid4()),
+                    'chat_id': chat_id,
+                    'user_id': user_id,
+                    'message': formatted_response,
+                    'timestamp': datetime.now(timezone.utc),
+                    'type': 'assistant',
+                    'search_results': result_answer.get('sources', []),
+                    'deepthink_data': final_result,  # Store complete research data
+                    'session_id': session_id,
+                    'shared': False,
+                    'deepthink_completed': True
+                }
+                
+                try:
+                    await self.application.mongodb.create_message(response_doc)
+                    logger.info(f"✅ Deep Think response stored for session {session_id}")
                     
-                    # Add statistics if available
-                    if answer_obj.get('statistics'):
-                        stats = answer_obj['statistics']
-                        formatted_parts.extend([
-                            "## 📊 Research Statistics",
-                            f"- **Sources analyzed:** {stats.get('sources_count', 0)}",
-                            f"- **Key topics:** {', '.join(stats.get('key_topics', []))}",
-                            f"- **Research depth:** {stats.get('depth_level', 'Standard')}",
-                            ""
-                        ])
+                    # Clean up session
+                    orchestrator.cleanup_session(session_id)
                     
-                    # Add processing time if available
-                    if final_result.get('processing_time'):
-                        formatted_parts.append(f"*Processing time: {final_result['processing_time']:.1f}s*")
-                    
-                    formatted_response = "\n".join(formatted_parts)
-                    
-                    # Store the complete AI response in MongoDB
-                    response_doc = {
-                        'message_id': str(uuid.uuid4()),
-                        'chat_id': chat_id,
-                        'user_id': user_id,
-                        'message': formatted_response,
-                        'timestamp': datetime.utcnow(),
-                        'type': 'assistant',
-                        'search_results': final_result.get('scraped_content', []),
-                        'deepthink_data': final_result,  # Store full deep-think data
-                        'shared': False,
-                        'deepthink_completed': True  # Mark as completed background task
-                    }
-                    
-                    try:
-                        await self.application.mongodb.create_message(response_doc)
-                        logger.info(f"✅ Background deep-think response stored successfully for chat_id: {chat_id}")
-                    except Exception as e:
-                        logger.error(f"❌ Error storing background deep-think response: {e}")
-                else:
-                    logger.warning(f"⚠️ Background deep-think completed but no structured answer found for chat_id: {chat_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error storing Deep Think response: {e}")
             else:
-                logger.error(f"❌ Background deep-think failed to produce result for chat_id: {chat_id}")
+                logger.error(f"❌ Deep Think session {session_id} failed to produce result")
                 
         except Exception as e:
-            logger.error(f"❌ Background deep-think process failed for chat_id: {chat_id}: {e}")
-                        # Final result
-                        
-    async def _background_deepthink_process(self, orchestrator, request, chat_id: str, user_id: str, message_id: str):
-        """
-        Background process that ensures deep-think completes and saves to MongoDB 
-        even if client disconnects
-        """
-        try:
-            logger.info(f"🔄 Starting background deep-think process for chat_id: {chat_id}")
-            
-            # Process the deep-think request completely
-            final_result = None
-            async for progress_update in orchestrator.stream_deep_think(request):
-                if progress_update.step == orchestrator.total_steps:
-                    final_result = progress_update.details.get('result')
-                    break
-            
-            if final_result:
-                # Format the result for storage
-                confidence = final_result.get('confidence_score', 0.0)
-                confidence_emoji = "🟢" if confidence >= 0.8 else "🟡" if confidence >= 0.6 else "🔴"
-                
-                # Check if we have structured Answer object
-                answer_obj = final_result.get('answer')
-                
-                if answer_obj:
-                    # Use structured format matching test file Answer structure
-                    formatted_parts = [
-                        f"**Deep Think Research Result** {confidence_emoji}",
-                        "",
-                        "## 📋 Answer",
-                        answer_obj.get('content', 'No answer content available'),
-                        "",
-                        f"**Confidence:** {answer_obj.get('confidence', 0.0):.1%}",
-                        ""
-                    ]
-                    
-                    # Add statistics if available
-                    if answer_obj.get('statistics'):
-                        stats = answer_obj['statistics']
-                        formatted_parts.extend([
-                            "## 📊 Research Statistics",
-                            f"- **Sources analyzed:** {stats.get('sources_count', 0)}",
-                            f"- **Key topics:** {', '.join(stats.get('key_topics', []))}",
-                            f"- **Research depth:** {stats.get('depth_level', 'Standard')}",
-                            ""
-                        ])
-                    
-                    # Add processing time if available
-                    if final_result.get('processing_time'):
-                        formatted_parts.append(f"*Processing time: {final_result['processing_time']:.1f}s*")
-                    
-                    formatted_response = "\n".join(formatted_parts)
-                    
-                    # Store the complete AI response in MongoDB
-                    response_doc = {
-                        'message_id': str(uuid.uuid4()),
-                        'chat_id': chat_id,
-                        'user_id': user_id,
-                        'message': formatted_response,
-                        'timestamp': datetime.utcnow(),
-                        'type': 'assistant',
-                        'search_results': final_result.get('scraped_content', []),
-                        'deepthink_data': final_result,  # Store full deep-think data
-                        'shared': False,
-                        'deepthink_completed': True  # Mark as completed background task
-                    }
-                    
-                    try:
-                        await self.application.mongodb.create_message(response_doc)
-                        logger.info(f"✅ Background deep-think response stored successfully for chat_id: {chat_id}")
-                    except Exception as e:
-                        logger.error(f"❌ Error storing background deep-think response: {e}")
-                else:
-                    logger.warning(f"⚠️ Background deep-think completed but no structured answer found for chat_id: {chat_id}")
-            else:
-                logger.error(f"❌ Background deep-think failed to produce result for chat_id: {chat_id}")
-                
-        except Exception as e:
-            logger.error(f"❌ Background deep-think process failed for chat_id: {chat_id}: {e}")
+            logger.error(f"❌ Background Deep Think session {session_id} failed: {e}")
+            # Ensure cleanup even on error
+            try:
+                orchestrator.cleanup_session(session_id)
+            except:
+                pass
 
 class SharedMessagesHandler(tornado.web.RequestHandler):
     """

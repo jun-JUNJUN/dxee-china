@@ -13,26 +13,14 @@ from app.handler.deepthink_handler import DeepThinkChatHistoryHandler, DeepThink
 from app.handler.main_handler import MainHandler, NotFoundHandler, FaviconHandler
 from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, GitHubOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler, SessionCheckHandler, EmailVerificationHandler, ForgotPasswordHandler, ResetPasswordHandler
 from app.handler.deep_search_handler import DeepSearchHandler, DeepSearchStreamHandler, DeepSearchWebSocketHandler
-from app.handler.dual_research_handler import DualResearchHandler, DualResearchWebSocketHandler
 from app.handler.admin_handler import AdminHandler
 from app.service.deepseek_service import DeepSeekService
 from app.service.mongodb_service import MongoDBService
+from app.service.serper_api_client import SerperAPIClient
+from app.service.html_cache_service import HTMLCacheService
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='backend.log',
-    filemode='a'  # Append mode
-)
-# Add console handler to see logs in the console as well
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
-console.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logging.getLogger('').addHandler(console)
-
+# Logging is configured in wsgi.py - avoid duplicate configuration
 logger = logging.getLogger(__name__)
-logger.info("Logging configured to write to backend.log")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -115,8 +103,6 @@ class Application(tornado.web.Application):
             (r"/deep-search", DeepSearchHandler),
             (r"/deep-search/stream", DeepSearchStreamHandler),
             (r"/deep-search/ws", DeepSearchWebSocketHandler),
-            (r"/dual-research", DualResearchHandler),
-            (r"/dual-research/ws", DualResearchWebSocketHandler),
             (r"/auth/register", RegisterHandler),
             (r"/auth/login", LoginHandler),
             (r"/auth/logout", LogoutHandler),
@@ -177,6 +163,19 @@ class Application(tornado.web.Application):
         io_loop = tornado.ioloop.IOLoop.current()
         self.mongodb = MongoDBService(io_loop=io_loop)
         logger.info("MongoDB service initialized")
+        
+        # Initialize Serper API client
+        serper_api_key = os.environ.get('SERPER_API_KEY')
+        if serper_api_key:
+            self.serper_client = SerperAPIClient(serper_api_key)
+            logger.info("Serper API client initialized")
+        else:
+            self.serper_client = None
+            logger.warning("SERPER_API_KEY not found - Serper functionality disabled")
+        
+        # Initialize HTML cache service
+        self.html_cache_service = HTMLCacheService(self.mongodb)
+        logger.info("HTML cache service initialized")
         
         # Store queue references
         self.input_queue = input_queue

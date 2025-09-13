@@ -24,6 +24,7 @@ class MongoDBService:
         self._users = None
         self._chats = None
         self._messages = None
+        self._html_cache = None
         
         logger.info(f"MongoDB service configured with URI: {self.mongodb_uri}")
     
@@ -100,6 +101,7 @@ class MongoDBService:
             self._users = self._db.users
             self._chats = self._db.chats
             self._messages = self._db.messages
+            self._html_cache = self._db.html_cache
             
             logger.info("MongoDB client initialized")
     
@@ -127,6 +129,11 @@ class MongoDBService:
     def messages(self):
         self._ensure_client()
         return self._messages
+    
+    @property
+    def html_cache(self):
+        self._ensure_client()
+        return self._html_cache
     
     async def create_indexes(self):
         """
@@ -165,7 +172,14 @@ class MongoDBService:
             await self.messages.create_index([("user_id", 1), ("chat_id", 1)])
             await self.messages.create_index("shared", sparse=True)
             
-            logger.info("MongoDB indexes created successfully with new privacy-focused schema")
+            # Create indexes for HTML cache collection
+            await self.html_cache.create_index("url", unique=True)  # Fast URL lookups
+            await self.html_cache.create_index("expiration_date", expireAfterSeconds=0)  # TTL index for automatic cleanup
+            await self.html_cache.create_index([("url", 1), ("expiration_date", 1)])  # Compound index for efficient queries
+            await self.html_cache.create_index("last_accessed")  # For cache statistics and LRU cleanup
+            await self.html_cache.create_index("access_count")  # For access statistics
+            
+            logger.info("MongoDB indexes created successfully with new privacy-focused schema and HTML cache support")
         except Exception as e:
             logger.error(f"Error creating MongoDB indexes: {e}")
             raise

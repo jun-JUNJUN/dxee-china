@@ -251,7 +251,7 @@
             background: #333;
             border-color: #00bcd4;
         }
-        .search-btn, .deep-btn, .qwen-btn, .deepseek-btn, .deepthink-btn {
+        .search-btn, .deep-btn, .deepthink-btn {
             padding: 6px 14px;
             border-radius: 16px;
             border: 1px solid #fff;
@@ -277,22 +277,22 @@
             background: linear-gradient(135deg, #9c27b0, #e91e63);
             border-color: #e91e63;
         }
-        .search-btn:hover, .deep-btn:hover, .qwen-btn:hover, .deepseek-btn:hover {
+        .search-btn:hover, .deep-btn:hover {
             background: #333;
             border-color: #00bcd4;
         }
-        .search-btn.selected, .deep-btn.selected, .qwen-btn.selected, .deepseek-btn.selected {
+        .search-btn.selected, .deep-btn.selected {
             background: #00bcd4;
             color: #fff;
             border-color: #00bcd4;
         }
-        .search-btn.disabled, .deep-btn.disabled, .qwen-btn.disabled, .deepseek-btn.disabled, .deepthink-btn.disabled {
+        .search-btn.disabled, .deep-btn.disabled, .deepthink-btn.disabled {
             opacity: 0.5;
             cursor: not-allowed;
             background: #232526;
             border-color: #666;
         }
-        .search-btn.disabled:hover, .deep-btn.disabled:hover, .qwen-btn.disabled:hover, .deepseek-btn.disabled:hover, .deepthink-btn.disabled:hover {
+        .search-btn.disabled:hover, .deep-btn.disabled:hover, .deepthink-btn.disabled:hover {
             background: #232526;
             border-color: #666;
         }
@@ -430,40 +430,6 @@
             margin-bottom: 0;
         }
         
-        .qwen-btn {
-            padding: 6px 14px;
-            border-radius: 16px;
-            border: 1px solid #fff;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            background: #232526;
-            color: #fff;
-            transition: background 0.2s, border-color 0.2s, opacity 0.2s;
-        }
-        
-        .qwen-btn:hover {
-            background: #333;
-            border-color: #00bcd4;
-        }
-        
-        .qwen-btn.selected {
-            background: #00bcd4;
-            color: #fff;
-            border-color: #00bcd4;
-        }
-        
-        .qwen-btn.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            background: #232526;
-            border-color: #666;
-        }
-        
-        .qwen-btn.disabled:hover {
-            background: #232526;
-            border-color: #666;
-        }
         /* Floating Auth Panels */
         .auth-panel {
             position: fixed;
@@ -895,8 +861,6 @@
                         <div class="left-buttons">
                             <button type="button" class="search-btn selectable-btn" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
-                            <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
-                            <button type="button" class="deepseek-btn selectable-btn" data-mode="deepseek">DeepSeek</button>
                             <button type="button" class="deepthink-btn selectable-btn" data-mode="deepthink">Deep Think</button>
                         </div>
                         <div class="right-button">
@@ -919,8 +883,6 @@
                         <div class="left-buttons">
                             <button type="button" class="search-btn selectable-btn selected" data-mode="search">Search</button>
                             <button type="button" class="deep-btn selectable-btn" data-mode="deep">Deep Search</button>
-                            <button type="button" class="qwen-btn selectable-btn" data-mode="googleweb">Google Deep</button>
-                            <button type="button" class="deepseek-btn selectable-btn" data-mode="deepseek">DeepSeek</button>
                             <button type="button" class="deepthink-btn selectable-btn" data-mode="deepthink">Deep Think</button>
                         </div>
                         <div class="right-button">
@@ -1257,17 +1219,11 @@
                 deepBtn.dataset.mode = 'deep';
                 deepBtn.textContent = 'Deep Search';
                 
-                const qwenBtn = document.createElement('button');
-                qwenBtn.type = 'button';
-                qwenBtn.className = 'qwen-btn selectable-btn';
-                qwenBtn.dataset.mode = 'googleweb';
-                qwenBtn.textContent = 'Google Deep';
-                
-                const deepseekBtn = document.createElement('button');
-                deepseekBtn.type = 'button';
-                deepseekBtn.className = 'deepseek-btn selectable-btn';
-                deepseekBtn.dataset.mode = 'deepseek';
-                deepseekBtn.textContent = 'DeepSeek';
+                const deepthinkBtn = document.createElement('button');
+                deepthinkBtn.type = 'button';
+                deepthinkBtn.className = 'deepthink-btn selectable-btn';
+                deepthinkBtn.dataset.mode = 'deepthink';
+                deepthinkBtn.textContent = 'Deep Think';
                 
                 const rightButton = document.createElement('div');
                 rightButton.className = 'right-button';
@@ -1279,8 +1235,7 @@
                 
                 leftButtons.appendChild(searchBtn);
                 leftButtons.appendChild(deepBtn);
-                leftButtons.appendChild(qwenBtn);
-                leftButtons.appendChild(deepseekBtn);
+                leftButtons.appendChild(deepthinkBtn);
                 
                 rightButton.appendChild(executeBtn);
                 
@@ -1641,14 +1596,8 @@
                 messageInput.value = '';
                 messageInput.style.height = 'auto';
                 
-                // Process the search - check if dual research mode
-                if (currentSearchMode === 'googleweb') {
-                    console.log('Using dual research mode for welcome screen');
-                    await handleDualResearch(message);
-                } else {
-                    // Process the search with streaming
-                    await displayStreamingResponse(message);
-                }
+                // Process the search with streaming
+                await displayStreamingResponse(message);
             });
             
             // Initialize the UI for the chat screen form
@@ -1703,14 +1652,8 @@
                 chatInput.value = '';
                 chatInput.style.height = 'auto';
                 
-                // Process the search - check if dual research mode
-                if (currentSearchMode === 'googleweb') {
-                    console.log('Using dual research mode for chat screen');
-                    await handleDualResearch(message);
-                } else {
-                    // Process the search with streaming
-                    await displayStreamingResponse(message);
-                }
+                // Process the search with streaming
+                await displayStreamingResponse(message);
             });
             
             // Handle mode selection for welcome screen
@@ -1868,7 +1811,7 @@
             }
             
             // Function to handle streaming response
-            // DeepSeek Research Progress Handlers
+            // Deep Think Research Progress Handlers
             function handleResearchStep(messageDiv, data) {
                 // Create research progress section if it doesn't exist
                 if (!messageDiv.querySelector('.research-progress')) {
@@ -1897,7 +1840,7 @@
                     researchIcon.style.fontSize = '18px';
                     
                     const headerText = document.createElement('span');
-                    headerText.textContent = 'DeepSeek Research Progress';
+                    headerText.textContent = 'Deep Think Research Progress';
                     
                     const streamingIndicator = document.createElement('span');
                     streamingIndicator.className = 'streaming-indicator';
@@ -2012,7 +1955,7 @@
                 }
             }
             
-            function addDeepSeekResearchDisplay(messageDiv, researchData) {
+            function addDeepThinkResearchDisplay(messageDiv, researchData) {
                 // Create enhanced research summary section
                 const researchSummary = document.createElement('div');
                 researchSummary.className = 'research-summary';
@@ -2442,13 +2385,13 @@
                                         }
                                         chatMessages.scrollTop = chatMessages.scrollHeight;
                                     } else if (data.type === 'research_step') {
-                                        // Handle DeepSeek research step indicators
+                                        // Handle Deep Think research step indicators
                                         handleResearchStep(messageDiv, data);
                                     } else if (data.type === 'research_progress') {
-                                        // Handle DeepSeek research progress updates
+                                        // Handle Deep Think research progress updates
                                         handleResearchProgress(messageDiv, data);
                                     } else if (data.type === 'research_complete') {
-                                        // Handle DeepSeek research completion
+                                        // Handle Deep Think research completion
                                         handleResearchComplete(messageDiv, data);
                                     } else if (data.type === 'chunk') {
                                         accumulatedContent += data.content;
@@ -2588,9 +2531,9 @@
                                         
                                         messageDiv.appendChild(statsDiv);
                                         
-                                        // Add DeepSeek research data if available
+                                        // Add Deep Think research data if available
                                         if (data.research_data) {
-                                            addDeepSeekResearchDisplay(messageDiv, data.research_data);
+                                            addDeepThinkResearchDisplay(messageDiv, data.research_data);
                                         }
                                         
                                         // Add search results if available
@@ -3381,320 +3324,9 @@
                 }
             }
 
-            // Dual Research functionality for Google Deep button
-            let isDualResearching = false;
 
-            // Handle Google Deep with Dual Research
-            async function handleDualResearch(message) {
-                if (isDualResearching) return;
-                
-                isDualResearching = true;
-                console.log('🔍 Starting Dual Research for:', message);
-                
-                // Show dual research progress
-                addDualResearchProgress();
-                
-                try {
-                    // Make HTTP request to dual research endpoint
-                    const response = await fetch('/dual-research', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            question: message
-                        }),
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const results = await response.json();
-                    
-                    if (results.status === 'success') {
-                        displayDualResearchResults(results);
-                        // Refresh chat history if a new chat was created
-                        if (results.chat_id) {
-                            currentChatId = results.chat_id;
-                            displayChatHistory();
-                        }
-                    } else {
-                        showDualResearchError(results.message || 'Unknown error');
-                    }
-                    
-                } catch (error) {
-                    console.error('Dual research error:', error);
-                    showDualResearchError('Failed to conduct dual research: ' + error.message);
-                } finally {
-                    isDualResearching = false;
-                }
-            }
 
-            function addDualResearchProgress() {
-                // Remove loading message and add progress indicator
-                const loadingMessage = document.getElementById('loading-message');
-                if (loadingMessage) {
-                    const progressDiv = document.createElement('div');
-                    progressDiv.className = 'dual-research-progress';
-                    progressDiv.id = 'dual-research-progress';
-                    progressDiv.style.marginTop = '15px';
-                    progressDiv.style.padding = '20px';
-                    progressDiv.style.backgroundColor = '#1a1a2e';
-                    progressDiv.style.border = '1px solid #4a90e2';
-                    progressDiv.style.borderLeft = '4px solid #4a90e2';
-                    progressDiv.style.borderRadius = '8px';
-                    progressDiv.style.boxShadow = '0 2px 8px rgba(74, 144, 226, 0.1)';
-                    
-                    progressDiv.innerHTML = `
-                        <div style="font-weight: bold; color: #4a90e2; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-                            <span>🔍</span>
-                            <span>Dual Research in Progress</span>
-                            <span style="margin-left: auto; animation: pulse 1.5s infinite;">●</span>
-                        </div>
-                        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-                            <div style="flex: 1; padding: 10px; background: #2a2a3e; border-radius: 6px; border-left: 3px solid #4ade80;">
-                                <div style="font-weight: bold; color: #4ade80; margin-bottom: 5px;">🧠 Intelligent Research</div>
-                                <div style="font-size: 12px; color: #b8c5d6;">Analyzes if web search is needed first</div>
-                            </div>
-                            <div style="flex: 1; padding: 10px; background: #2a2a3e; border-radius: 6px; border-left: 3px solid #ff9776;">
-                                <div style="font-weight: bold; color: #ff9776; margin-bottom: 5px;">⚡ Legacy Research</div>
-                                <div style="font-size: 12px; color: #b8c5d6;">Always performs comprehensive web search</div>
-                            </div>
-                        </div>
-                        <div style="text-align: center; color: #888; font-size: 14px;">
-                            Running both research approaches simultaneously...
-                        </div>
-                    `;
-                    
-                    loadingMessage.parentNode.replaceChild(progressDiv, loadingMessage);
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-            }
 
-            function displayDualResearchResults(results) {
-                // Remove progress indicator
-                const progressDiv = document.getElementById('dual-research-progress');
-                if (progressDiv) {
-                    progressDiv.remove();
-                }
-                
-                // Create dual results display
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message ai-message';
-                messageDiv.style.width = '845px';
-                messageDiv.style.maxWidth = '90%';
-                
-                const headerDiv = document.createElement('div');
-                headerDiv.className = 'message-header';
-                
-                const iconSpan = document.createElement('span');
-                iconSpan.className = 'message-icon ai-icon';
-                iconSpan.textContent = '🔍';
-                
-                const nameSpan = document.createElement('span');
-                nameSpan.textContent = 'Dual Research Results';
-                
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'message-content';
-                
-                headerDiv.appendChild(iconSpan);
-                headerDiv.appendChild(nameSpan);
-                messageDiv.appendChild(headerDiv);
-                messageDiv.appendChild(contentDiv);
-                
-                // Create side-by-side results layout
-                const resultsContainer = document.createElement('div');
-                resultsContainer.style.display = 'flex';
-                resultsContainer.style.gap = '20px';
-                resultsContainer.style.marginTop = '15px';
-                
-                // Intelligent Research Result
-                const intelligentDiv = createResearchResultDiv(results.intelligent_research, 'Intelligent Research', '#4ade80', '🧠');
-                
-                // Legacy Research Result  
-                const legacyDiv = createResearchResultDiv(results.legacy_research, 'Legacy Research', '#ff9776', '⚡');
-                
-                resultsContainer.appendChild(intelligentDiv);
-                resultsContainer.appendChild(legacyDiv);
-                contentDiv.appendChild(resultsContainer);
-                
-                chatMessages.appendChild(messageDiv);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-            
-            function createResearchResultDiv(research, title, color, icon) {
-                const div = document.createElement('div');
-                div.style.flex = '1';
-                div.style.padding = '15px';
-                div.style.backgroundColor = '#1a1a2e';
-                div.style.border = `1px solid ${color}`;
-                div.style.borderLeft = `4px solid ${color}`;
-                div.style.borderRadius = '8px';
-                div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                
-                const headerDiv = document.createElement('div');
-                headerDiv.style.fontWeight = 'bold';
-                headerDiv.style.color = color;
-                headerDiv.style.marginBottom = '12px';
-                headerDiv.style.fontSize = '16px';
-                headerDiv.style.display = 'flex';
-                headerDiv.style.alignItems = 'center';
-                headerDiv.style.gap = '8px';
-                headerDiv.innerHTML = `<span>${icon}</span><span>${title}</span>`;
-                
-                const contentDiv = document.createElement('div');
-                contentDiv.style.color = '#e0e0e0';
-                contentDiv.style.fontSize = '14px';
-                contentDiv.style.lineHeight = '1.5';
-                
-                if (research.approach === 'direct_answer') {
-                    // Direct answer without web search
-                    const answerDiv = document.createElement('div');
-                    answerDiv.style.background = '#0a0a0f';
-                    answerDiv.style.padding = '12px';
-                    answerDiv.style.borderRadius = '4px';
-                    answerDiv.style.border = '1px solid #2a2a3e';
-                    answerDiv.style.marginBottom = '10px';
-                    
-                    const answerLabel = document.createElement('div');
-                    answerLabel.style.fontWeight = 'bold';
-                    answerLabel.style.color = color;
-                    answerLabel.style.marginBottom = '8px';
-                    answerLabel.textContent = '🎯 Direct Answer';
-                    
-                    const answerText = document.createElement('div');
-                    answerText.textContent = research.direct_answer || 'No direct answer available';
-                    
-                    answerDiv.appendChild(answerLabel);
-                    answerDiv.appendChild(answerText);
-                    contentDiv.appendChild(answerDiv);
-                } else if (research.approach === 'web_search_research' || research.approach === 'legacy_web_search') {
-                    // Web search results
-                    if (research.steps && research.steps.step2 && research.steps.step2.search_results) {
-                        const searchHeader = document.createElement('div');
-                        searchHeader.style.fontWeight = 'bold';
-                        searchHeader.style.color = color;
-                        searchHeader.style.marginBottom = '8px';
-                        searchHeader.textContent = '🔍 Search Results';
-                        contentDiv.appendChild(searchHeader);
-                        
-                        const resultsDiv = document.createElement('div');
-                        resultsDiv.style.maxHeight = '200px';
-                        resultsDiv.style.overflowY = 'auto';
-                        
-                        research.steps.step2.search_results.slice(0, 3).forEach(result => {
-                            const resultItem = document.createElement('div');
-                            resultItem.style.marginBottom = '10px';
-                            resultItem.style.padding = '8px';
-                            resultItem.style.background = '#0a0a0f';
-                            resultItem.style.borderRadius = '4px';
-                            resultItem.style.border = '1px solid #2a2a3e';
-                            
-                            const titleDiv = document.createElement('div');
-                            titleDiv.style.fontWeight = 'bold';
-                            titleDiv.style.color = '#1a73e8';
-                            titleDiv.style.marginBottom = '3px';
-                            titleDiv.style.fontSize = '12px';
-                            titleDiv.textContent = result.title;
-                            
-                            const snippetDiv = document.createElement('div');
-                            snippetDiv.style.fontSize = '11px';
-                            snippetDiv.style.color = '#b8c5d6';
-                            snippetDiv.style.lineHeight = '1.3';
-                            snippetDiv.textContent = result.snippet.substring(0, 100) + '...';
-                            
-                            resultItem.appendChild(titleDiv);
-                            resultItem.appendChild(snippetDiv);
-                            resultsDiv.appendChild(resultItem);
-                        });
-                        
-                        contentDiv.appendChild(resultsDiv);
-                    }
-                    
-                    // AI Analysis
-                    if (research.steps && research.steps.step4 && research.steps.step4.analysis) {
-                        const analysisHeader = document.createElement('div');
-                        analysisHeader.style.fontWeight = 'bold';
-                        analysisHeader.style.color = color;
-                        analysisHeader.style.marginTop = '12px';
-                        analysisHeader.style.marginBottom = '8px';
-                        analysisHeader.textContent = '🧠 AI Analysis';
-                        contentDiv.appendChild(analysisHeader);
-                        
-                        const analysisDiv = document.createElement('div');
-                        analysisDiv.style.background = '#0a0a0f';
-                        analysisDiv.style.padding = '10px';
-                        analysisDiv.style.borderRadius = '4px';
-                        analysisDiv.style.border = '1px solid #2a2a3e';
-                        analysisDiv.style.maxHeight = '150px';
-                        analysisDiv.style.overflowY = 'auto';
-                        analysisDiv.style.fontSize = '12px';
-                        
-                        const analysisText = research.steps.step4.analysis.analysis_content || 'No analysis available';
-                        analysisDiv.textContent = analysisText.substring(0, 500) + (analysisText.length > 500 ? '...' : '');
-                        
-                        contentDiv.appendChild(analysisDiv);
-                    }
-                }
-                
-                // Research stats
-                const statsDiv = document.createElement('div');
-                statsDiv.style.marginTop = '10px';
-                statsDiv.style.padding = '8px';
-                statsDiv.style.background = '#2a2a3e';
-                statsDiv.style.borderRadius = '4px';
-                statsDiv.style.fontSize = '11px';
-                statsDiv.style.color = '#888';
-                
-                const researchType = research.research_type || 'unknown';
-                const approach = research.approach || 'unknown';
-                statsDiv.innerHTML = `
-                    <div>Type: ${researchType}</div>
-                    <div>Approach: ${approach}</div>
-                    <div>Success: ${research.success ? '✅' : '❌'}</div>
-                `;
-                
-                contentDiv.appendChild(statsDiv);
-                
-                div.appendChild(headerDiv);
-                div.appendChild(contentDiv);
-                return div;
-            }
-
-            function showDualResearchError(message) {
-                const progressDiv = document.getElementById('dual-research-progress');
-                if (progressDiv) {
-                    progressDiv.remove();
-                }
-                
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'message ai-message error-message';
-                errorDiv.style.width = '845px';
-                errorDiv.style.maxWidth = '90%';
-                
-                const headerDiv = document.createElement('div');
-                headerDiv.className = 'message-header';
-                
-                const iconSpan = document.createElement('span');
-                iconSpan.className = 'message-icon ai-icon';
-                iconSpan.textContent = '❌';
-                
-                const nameSpan = document.createElement('span');
-                nameSpan.textContent = 'Dual Research Error';
-                
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'message-content';
-                contentDiv.textContent = message;
-                
-                headerDiv.appendChild(iconSpan);
-                headerDiv.appendChild(nameSpan);
-                errorDiv.appendChild(headerDiv);
-                errorDiv.appendChild(contentDiv);
-                
-                chatMessages.appendChild(errorDiv);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
 
             function updateDeepSearchProgress_OLD(step, data) {
                 const progressDiv = document.getElementById('deep-search-progress');

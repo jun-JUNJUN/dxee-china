@@ -39,7 +39,8 @@ class SerperAPIClient:
     """
     
     def __init__(self, api_key: Optional[str] = None, timeout: int = 30, 
-                 requests_per_second: float = 2.0, max_concurrent_requests: int = 5):
+                 requests_per_second: float = 2.0, max_concurrent_requests: int = 5,
+                 html_cache_service=None):
         self.api_key = api_key or os.environ.get('SERPER_API_KEY')
         self.timeout = timeout
         self.search_url = os.environ.get('SERPER_SEARCH_URL', 'https://google.serper.dev/search')
@@ -47,6 +48,9 @@ class SerperAPIClient:
         
         if not self.api_key:
             logger.warning("Serper API key not found. Set SERPER_API_KEY environment variable.")
+        
+        # HTML cache service for caching content
+        self.html_cache_service = html_cache_service
         
         # Rate limiting and retry configuration
         self.max_retries = 3
@@ -450,6 +454,115 @@ class SerperAPIClient:
             self.error_count += 1
             logger.error(f"Scraping failed for URL '{url}': {e}")
             raise
+    
+    async def scrape_with_cache(self, url: str, extract_text: bool = True, 
+                               extract_markdown: bool = True, use_queue: bool = True,
+                               cache_expiry_days: Optional[int] = None) -> Tuple[Dict[str, Any], bool]:
+        """
+        Scrape content from URL with HTML caching support
+        
+        Args:
+            url: URL to scrape
+            extract_text: Whether to extract plain text
+            extract_markdown: Whether to extract markdown content
+            use_queue: Whether to use request queue for rate limiting
+            cache_expiry_days: Override cache expiry days
+            
+        Returns:
+            Tuple of (scraped content data, from_cache: bool)
+            
+        Raises:
+            SerperAPIError: For API errors
+        """
+        if not self.html_cache_service:
+            # No cache service available, fall back to regular scraping
+            logger.info(f"No cache service available, performing direct scrape for: {url}")
+            content = await self.scrape(url, extract_text, extract_markdown, use_queue)
+            return content, False
+        
+        try:
+            # Define fetch callback for cache service
+            async def fetch_callback(url: str) -> str:
+                """Fetch content using Serper API and return as HTML-like string"""
+                content_data = await self.scrape(url, extract_text, extract_markdown, use_queue)
+                
+                # Convert the scraped data to HTML-like content for caching
+                # We'll use markdown content if available, otherwise text
+                html_content = content_data.get('markdown', '') or content_data.get('text', '')
+                
+                if not html_content:
+                    logger.warning(f"No content extracted for caching from URL: {url}")
+                    # Return a minimal representation with available data
+                    return json.dumps({
+                        'title': content_data.get('title', ''),
+                        'url': url,
+                        'content': content_data.get('text', ''),
+                        'metadata': {k: v for k, v in content_data.items() if k not in ['text', 'markdown']}
+                    })
+                
+                # Return the content for caching
+                return html_content
+            
+            # Use cache service to get or fetch content
+            cached_content, from_cache = await self.html_cache_service.get_or_fetch_content(
+                url, fetch_callback, cache_expiry_days
+            )
+            
+            # Convert cached content back to Serper API format
+            if from_cache:
+                logger.info(f"Using cached content for URL: {url} (access count: {cached_content.access_count})")
+                
+                # Try to parse as JSON first (for structured cached content)
+                try:
+                    parsed_content = json.loads(cached_content.html_content)
+                    if isinstance(parsed_content, dict):
+                        return parsed_content, True
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                
+                # Return as markdown/text content
+                return {
+                    'url': url,
+                    'title': f'Cached content for {url}',
+                    'text': cached_content.html_content,
+                    'markdown': cached_content.html_content,
+                    'cached': True,
+                    'cache_metadata': {
+                        'access_count': cached_content.access_count,
+                        'last_accessed': cached_content.last_accessed.isoformat(),
+                        'retrieval_timestamp': cached_content.retrieval_timestamp.isoformat()
+                    }
+                }, True
+            else:
+                logger.info(f"Fetched new content for URL: {url}")
+                # Content was freshly fetched, parse from the fetch callback result
+                try:
+                    parsed_content = json.loads(cached_content.html_content)
+                    if isinstance(parsed_content, dict):
+                        return parsed_content, False
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                
+                # Return as text content
+                return {
+                    'url': url,
+                    'title': f'Fresh content for {url}',
+                    'text': cached_content.html_content,
+                    'markdown': cached_content.html_content,
+                    'cached': False
+                }, False
+                
+        except Exception as e:
+            logger.error(f"Cache-aware scraping failed for URL '{url}': {e}")
+            logger.info(f"Falling back to direct scraping for URL: {url}")
+            
+            # Fallback to regular scraping
+            try:
+                content = await self.scrape(url, extract_text, extract_markdown, use_queue)
+                return content, False
+            except Exception as fallback_e:
+                logger.error(f"Fallback scraping also failed for URL '{url}': {fallback_e}")
+                raise SerperAPIError(f"Both cache-aware and fallback scraping failed: {fallback_e}")
     
     async def batch_search(self, search_requests: List[Dict[str, Any]],
                           delay_between_requests: float = 1.0) -> List[Dict[str, Any]]:
