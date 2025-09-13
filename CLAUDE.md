@@ -32,6 +32,7 @@ A bidirectional information bridge application providing official China data to 
 - **deepseek-button-integration**: Integrate test_deepseek_advanced_web_research3_07.py algorithm as DeepSeek button functionality
 - **serper-deep-think-integration**: Replicate test_deepseek_advanced_web_search4_01.py algorithm with serper-mcp API and Jan deep-thinking logic as "deep-think" button functionality
 - **deepthink-streamlining-and-caching**: Frontend button cleanup (remove Google Deep/DeepSeek buttons) and Deep Think enhancement with MongoDB HTML caching and session resilience
+- **frontend-research-algorithm-logging**: Implement the test_deepseek_advanced_web_research4_01.py algorithm in frontend/backend with matching JSON log output format
 - Check `.kiro/specs/` for active specifications
 - Use `/kiro:spec-status [feature-name]` to check progress
 ## Project Structure
