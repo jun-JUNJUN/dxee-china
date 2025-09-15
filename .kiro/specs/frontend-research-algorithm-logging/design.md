@@ -42,27 +42,33 @@ The existing `enhanced_deepseek_research_service.py` and `deepthink_handler.py` 
 
 ```mermaid
 graph TB
-    Frontend[Chat Frontend] --> Handler['Deep Think' Handler]
-    Handler --> Service[Research Algorithm Service]
-    Service --> DeepSeek[DeepSeek LLM Client]
-    Service --> Serper[Serper API Client]
-    Service --> MongoDB[(MongoDB Cache)]
-    Service --> Logger[JSON Log Writer]
+    Frontend[Chat Frontend] --> Handler[ResearchStreamHandler]
+    Handler --> Orchestrator[Research Orchestrator]
+    Orchestrator --> DeepSeek[DeepSeek LLM Client]
+    Orchestrator --> Serper[Serper API Client]
+    Orchestrator --> MongoDB[(MongoDB Cache)]
+    Orchestrator --> Logger[JSON Log Writer]
     Logger --> LogFiles[Timestamped Log Files]
 
-    subgraph "Algorithm Components"
-        QueryGen[Query Generation]
-        WebSearch[Web Search]
-        ContentExtract[Content Extraction]
-        Relevance[Relevance Evaluation]
-        Synthesis[Answer Synthesis]
+    subgraph "Research Components"
+        ThinkingEngine[Deep Thinking Engine]
+        SerperClient[Serper Client]
+        ResultProcessor[Result Processor]
+        StatExtractor[Statistical Extractor]
+        TokenManager[Token Manager]
     end
 
-    Service --> QueryGen
-    QueryGen --> WebSearch
-    WebSearch --> ContentExtract
-    ContentExtract --> Relevance
-    Relevance --> Synthesis
+    Orchestrator --> ThinkingEngine
+    Orchestrator --> SerperClient
+    Orchestrator --> ResultProcessor
+    Orchestrator --> StatExtractor
+    Orchestrator --> TokenManager
+
+    subgraph "Routing Updates"
+        ChatStream["/chat/stream → ResearchStreamHandler"]
+        ResearchStream["/research/stream → ResearchStreamHandler"]
+        ResearchChat["/research/chat → ResearchChatHandler"]
+    end
 ```
 
 ### Technology Alignment
@@ -432,9 +438,13 @@ interface LogComparisonResult {
 - **Transaction Boundary**: Individual cache operations and batch cache management
 
 #### Integration Strategy
-- **Modification Approach**: Replace existing deepthink_handler.py implementation while maintaining the same HTTP interface
-- **Backward Compatibility**: Preserve existing Deep Think button behavior and search_mode="deepseek" parameter
-- **Migration Path**: Direct replacement of handler logic - existing chat interface unchanged
+- **Modification Approach**: Replace ChatStreamHandler with ResearchStreamHandler in main application routing while maintaining the same HTTP interface
+- **Backward Compatibility**: Preserve existing chat streaming behavior and research mode functionality
+- **Migration Path**: Update tornado_main.py routing to use new ResearchStreamHandler for /chat/stream endpoint
+- **Routing Changes**:
+  - `/chat/stream` → ResearchStreamHandler (replaces ChatStreamHandler)
+  - `/research/stream` → ResearchStreamHandler (explicit research endpoint)
+  - `/research/chat` → ResearchChatHandler (non-streaming research endpoint)
 
 ## Data Models
 

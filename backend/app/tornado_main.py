@@ -9,6 +9,7 @@ from meilisearch_python_sdk import AsyncClient
 from app.handler.search_handler import SearchHandler
 from app.handler.health_handler import HealthHandler
 from app.handler.chat_handler import ChatMessageHandler, ChatHistoryHandler, UserChatsHandler, ShareMessageHandler, SharedMessagesHandler, ChatStreamHandler
+from app.handler.research_stream_handler import ResearchStreamHandler, ResearchChatHandler
 from app.handler.deepthink_handler import DeepThinkChatHistoryHandler, DeepThinkAnalyticsHandler, DeepThinkSearchHandler, DeepThinkResultHandler, ChatDeepThinkMessagesHandler
 from app.handler.main_handler import MainHandler, NotFoundHandler, FaviconHandler
 from app.handler.auth_handler import RegisterHandler, LoginHandler, LogoutHandler, GoogleOAuthHandler, GitHubOAuthHandler, MicrosoftOAuthHandler, AppleOAuthHandler, UserProfileHandler, SessionCheckHandler, EmailVerificationHandler, ForgotPasswordHandler, ResetPasswordHandler
@@ -90,7 +91,9 @@ class Application(tornado.web.Application):
             (r"/search", SearchHandler),
             (r"/health", HealthHandler),
             (r"/chat/message", ChatMessageHandler),
-            (r"/chat/stream", ChatStreamHandler),
+            (r"/chat/stream", ResearchStreamHandler),  # Updated to use new research handler with JSON logging
+            (r"/research/stream", ResearchStreamHandler),  # Explicit research endpoint
+            (r"/research/chat", ResearchChatHandler),  # Non-streaming research endpoint
             (r"/chat/history/([^/]+)", ChatHistoryHandler),
             (r"/chat/user", UserChatsHandler),
             (r"/chat/share/([^/]+)", ShareMessageHandler),

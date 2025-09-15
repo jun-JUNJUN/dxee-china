@@ -175,3 +175,18 @@ This implementation plan replaces the existing Deep Think functionality with the
   - Create deployment documentation for environment variable configuration and API key setup
   - Implement health checks and system status monitoring for all research algorithm components
   - _Requirements: Production readiness for all requirements_
+
+- [x] 11. Update application routing for ResearchStreamHandler integration
+- [x] 11.1 Update tornado_main.py routing configuration
+  - Replace ChatStreamHandler with ResearchStreamHandler in /chat/stream endpoint
+  - Add explicit research endpoints: /research/stream and /research/chat
+  - Import ResearchStreamHandler and ResearchChatHandler in main application
+  - Maintain backward compatibility for existing chat streaming functionality
+  - _Requirements: Enable JSON logging functionality in production environment_
+
+- [x] 11.2 Update specification documentation
+  - Update design.md to reflect routing integration strategy
+  - Update architectural diagrams to show ResearchStreamHandler routing
+  - Document backward compatibility approach and endpoint changes
+  - Update integration strategy section with routing implementation details
+  - _Requirements: Maintain accurate specification documentation_
