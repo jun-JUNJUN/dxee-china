@@ -59,12 +59,14 @@ class ChatMessageHandler(tornado.web.RequestHandler):
                 chat_id = str(uuid.uuid4())
                 logger.info(f"Generated new chat_id: {chat_id}")
             
-            # Get user_id from request (would come from authentication in a real app)
+            # Get user_id from authenticated session
             user_id = self.get_secure_cookie("user_id")
             if user_id:
                 user_id = user_id.decode('utf-8')
+                logger.info(f"Using authenticated user_id: {user_id}")
             else:
-                # For development/testing, use a default user ID
+                # Only use fallback for non-authenticated sessions, log a warning
+                logger.warning("No authenticated user found, using fallback user_id")
                 user_id = "default_user"
             
             # Check if chat exists
@@ -296,12 +298,14 @@ class UserChatsHandler(tornado.web.RequestHandler):
     """
     async def get(self):
         try:
-            # Get user_id from request (would come from authentication in a real app)
+            # Get user_id from authenticated session
             user_id = self.get_secure_cookie("user_id")
             if user_id:
                 user_id = user_id.decode('utf-8')
+                logger.info(f"UserChatsHandler: Using authenticated user_id: {user_id}")
             else:
-                # For development/testing, use a default user ID
+                # Only use fallback for non-authenticated sessions, log a warning
+                logger.warning("UserChatsHandler: No authenticated user found, using fallback user_id")
                 user_id = "default_user"
             
             logger.info(f"Getting chats for user_id: {user_id}")

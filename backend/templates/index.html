@@ -829,7 +829,7 @@
                     <span class="new-chat-text">New Chat</span>
                 </button>
                 <div class="chat-history-section">
-                    <div class="chat-history-header">Recent Chats</div>
+                    <div class="chat-history-header" id="chatHistoryHeader" title="Click to refresh chat history" style="cursor: pointer;">Recent Chats</div>
                     <div id="chat-history-loading" class="chat-history-loading">Loading...</div>
                     <ul id="chatHistoryList" class="chat-history-list" style="display: none;"></ul>
                 </div>
@@ -1050,68 +1050,6 @@
                 }
             }
 
-            // Function to display chat history in sidebar
-            async function displayChatHistory() {
-                const chatHistoryList = document.getElementById('chatHistoryList');
-                
-                if (!chatHistoryList) {
-                    console.error('Chat history list element not found');
-                    return;
-                }
-
-                try {
-                    const chats = await loadUserChats();
-                    
-                    // Clear existing chat history
-                    chatHistoryList.innerHTML = '';
-                    
-                    if (chats.length === 0) {
-                        chatHistoryList.innerHTML = '<div style="color: #888; font-size: 11px; text-align: center; padding: 10px;">No chats yet</div>';
-                        return;
-                    }
-                    
-                    // Create chat history items
-                    chats.forEach(chat => {
-                        const chatItem = document.createElement('div');
-                        chatItem.className = 'chat-history-item';
-                        chatItem.dataset.chatId = chat.chat_id;
-                        
-                        // Check if this is the active chat
-                        if (chat.chat_id === currentChatId) {
-                            chatItem.classList.add('active');
-                        }
-                        
-                        const chatText = document.createElement('div');
-                        chatText.className = 'chat-history-item-text';
-                        
-                        // Get the first message content and truncate to 30 characters
-                        let displayText = 'New Chat';
-                        if (chat.messages && chat.messages.length > 0) {
-                            const firstMessage = chat.messages.find(msg => msg.sender === 'user');
-                            if (firstMessage && firstMessage.content) {
-                                displayText = firstMessage.content.substring(0, 30);
-                                if (firstMessage.content.length > 30) {
-                                    displayText += '...';
-                                }
-                            }
-                        }
-                        
-                        chatText.textContent = displayText;
-                        chatItem.appendChild(chatText);
-                        
-                        // Add click handler
-                        chatItem.addEventListener('click', () => {
-                            switchToChat(chat.chat_id);
-                        });
-                        
-                        chatHistoryList.appendChild(chatItem);
-                    });
-                    
-                } catch (error) {
-                    console.error('Error displaying chat history:', error);
-                    chatHistoryList.innerHTML = '<div style="color: #ff6b6b; font-size: 11px; text-align: center; padding: 10px;">Error loading chats</div>';
-                }
-            }
 
             // Function to switch to a specific chat
             async function switchToChat(chatId) {
@@ -1756,9 +1694,18 @@
                     startNewChat();
                 });
             }
-            
+
+            // Add click handler for chat history header to refresh manually
+            const chatHistoryHeader = document.getElementById('chatHistoryHeader');
+            if (chatHistoryHeader) {
+                chatHistoryHeader.addEventListener('click', function() {
+                    console.log('Chat history header clicked - refreshing');
+                    refreshChatHistory();
+                });
+            }
+
             // Load chat history when page loads
-            displayChatHistory();
+            loadChatHistoryOnLogin();
             
             // Function to get recent chat history from DOM (up to 2 previous exchanges)
             function getRecentChatHistory(maxExchanges = 2) {
@@ -2281,12 +2228,14 @@
                                     const data = JSON.parse(jsonStr);
                                     
                                     if (data.type === 'chat_id') {
-                                        // Only refresh chat history if this is a new chat (currentChatId was null)
+                                        // Track if this is a new chat for UI purposes
                                         const isNewChat = currentChatId === null;
                                         currentChatId = data.chat_id;
-                                        if (isNewChat) {
-                                            // Refresh chat history when new chat is created
-                                            displayChatHistory();
+
+                                        // Refresh chat history for new chats or when user is logged in
+                                        // (in case they just logged in and should see their personal chats)
+                                        if (isNewChat || isLoggedIn) {
+                                            refreshChatHistory();
                                         }
                                     } else if (data.type === 'reasoning_chunk') {
                                         // Handle reasoning content chunks with enhanced visual indicators
@@ -2577,7 +2526,11 @@
                             }
                         }
                     }
-                    
+
+                    // Refresh chat history after successful message completion
+                    // This ensures chat history updates for both new and existing chats
+                    refreshChatHistory();
+
                 } catch (error) {
                     console.error('Error in streaming response:', error);
                     
@@ -3284,31 +3237,36 @@
                 }
             }
             
-            // Function to load chat history on page load (only if logged in)
+            // Function to load chat history on page load (supports both authenticated and default_user)
             async function loadChatHistoryOnLogin() {
-                if (!isLoggedIn) {
-                    // Show not logged in state
-                    const loadingDiv = document.getElementById('chat-history-loading');
-                    const listDiv = document.getElementById('chatHistoryList');
-                    if (loadingDiv) {
-                        loadingDiv.textContent = 'Please log in';
-                        loadingDiv.style.display = 'block';
-                    }
-                    if (listDiv) {
-                        listDiv.style.display = 'none';
-                    }
-                    return;
-                }
-                
                 try {
+                    // Always try to load chat history since backend supports default_user fallback
                     const chats = await fetchChatHistory();
                     chatHistoryCache = chats;
                     displayChatHistory(chats);
                 } catch (error) {
                     console.error('Error loading initial chat history:', error);
                     const loadingDiv = document.getElementById('chat-history-loading');
-                    if (loadingDiv) {
-                        loadingDiv.textContent = 'Failed to load';
+                    const listDiv = document.getElementById('chatHistoryList');
+
+                    if (!isLoggedIn) {
+                        // Show login prompt only if there's an error AND user is not logged in
+                        if (loadingDiv) {
+                            loadingDiv.textContent = 'Please log in to see your chats';
+                            loadingDiv.style.display = 'block';
+                        }
+                        if (listDiv) {
+                            listDiv.style.display = 'none';
+                        }
+                    } else {
+                        // Show error message for authenticated users
+                        if (loadingDiv) {
+                            loadingDiv.textContent = 'Failed to load chats';
+                            loadingDiv.style.display = 'block';
+                        }
+                        if (listDiv) {
+                            listDiv.style.display = 'none';
+                        }
                     }
                 }
             }
@@ -3664,7 +3622,7 @@
                     const data = await response.json();
                     if (response.ok) {
                         showNotification('Login successful!', 'success');
-                        window.location.reload(); // Reload to update UI
+                        await checkLoginStatus(); // Re-check status to update UI and load chat history
                     } else {
                         showNotification(data.error || 'Verification failed.');
                     }
@@ -3713,7 +3671,7 @@
                     const data = await response.json();
                     if (response.ok) {
                         showNotification('Login successful!', 'success');
-                        window.location.reload();
+                        await checkLoginStatus(); // Re-check status to update UI and load chat history
                     } else {
                          if (data.email_not_verified) {
                             verificationEmail = data.email;
